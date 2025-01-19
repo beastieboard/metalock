@@ -66,10 +66,8 @@ impl_into!([], u8, OP, |self| unsafe { std::mem::transmute::<OP, u8>(self) });
 
 pub trait OpEncode {
     fn op_encode(&mut self, _ctx: &mut EncodeContext) -> OpTree;
-    fn is_op(&self) -> bool { true }
 }
 impl<R: Encode> OpEncode for R {
-    fn is_op(&self) -> bool { false }
     fn op_encode(&mut self, _ctx: &mut EncodeContext) -> OpTree {
         OpTree::Data(self.rd_encode())
     }
@@ -206,7 +204,7 @@ use paste::paste;
 macro_rules! opcode {
     ($(#$op:ident, )? $ret:ty, $name:ident
      <$($param:ident$(: $tr:path)?),*>
-     ($($f0:ident $(<$($f1:ty),*>)? ),*),
+     ($($(!$mod:tt )* $f0:ident $(<$($f1:ty),*>)? ),*),
      |$self:ident, $ctx:ident| $expr:expr
     ) => {
         #[derive(Clone, Debug)]
@@ -233,24 +231,33 @@ macro_rules! opcode {
     };
     ($(#$op:ident, )? $ret:ty, $name:ident
      <$($param:ident$(: $tr:path)?),*>
-     ($($f0:ident $(<$($f1:ty),*>)? ),*)
+     ($($(!$mod:tt )* $f0:ident $(<$($f1:ty),*>)? ),*)
     ) => {
         opcode!(
             $(#$op, )? $ret, $name<$($param$(: $tr)?),*>
-            ($($f0 $(<$($f1),*>)? ),*), |self, ctx| {
-                let mut opcode: Option<u8> = None;
-                $(opcode = Some(OP::$op(Default::default()).into());)?
-                let mut trees = Vec::<OpTree>::new();
-                macro_rules! mm {
-                    ($i:tt, PhantomData) => { };
-                    ($i:tt, $fi:tt) => { trees.push(self.$i.op_encode(ctx)); };
-                }
-                each_field!(|mm| $($f0),*);
-                OpTree::Op(opcode, trees)
+            ($($(!$mod )* $f0 $(<$($f1),*>)? ),*), |self, ctx| {
+                opcode!(|self, ctx| $($op, )? ($($(!$mod )* $f0),*) $)
              }
         );
     };
+    // note $dol (https://stackoverflow.com/a/53971532)
+    (|$self:ident,$ctx:ident| $($op:ident, )? ($($(!$mod:tt )* $f0:ident),*) $dol:tt) => {
+        { let mut opcode: Option<u8> = None;
+                $(opcode = Some(OP::$op(Default::default()).into());)?
+                let mut trees = Vec::<OpTree>::new();
+                macro_rules! mm {
+                    ($i:tt, (PhantomData)) => { };
+                    ($i:tt, ($fi:tt $dol(($mia:ty)),*)) => {
+                        let mut t = $self.$i.op_encode($ctx);
+                        $dol(t = <$mia>::op_encode(t, $ctx);)*
+                        trees.push(t);
+                    };
+                }
+                each_field!(|mm| $(($f0 $($mod),*)),*);
+                OpTree::Op(opcode, trees) }
+    };
 }
+
 
 opcode!(#CALL, O, Call<I: SchemaType, O: SchemaType>(RR<I>, RRFunction<I, O>));
 
@@ -333,11 +340,6 @@ impl<I> OpEncode for VarId<I> {
         OpTree::Data((**self).rd_encode())
     }
 }
-//impl<I: Clone> Decode for VarId<I> {
-//    fn rd_decode(buf: Buf) -> std::result::Result<Self, String> {
-//        Ok(u16::rd_decode(buf)?.into())
-//    }
-//}
 opcode!(#VAR, I, Var<I>(VarId<I>));
 impl<I: SchemaType> Var<I> {
     pub fn new() -> Var<I> {
@@ -365,11 +367,25 @@ opcode!(#GET_STRUCT_FIELD, R, GetStructField<S, R>(RR<S>, u8, u32, PhantomData<R
 opcode!(#SET_STRUCT_FIELD, S, SetStructField<S: SchemaType, R: SchemaType>(RR<S>, u8, u32, RR<R>));
 
 
-opcode!(#VAL, Function<I, O>, Function<I: SchemaType, O: SchemaType>(VarId<I>, Jump<O>), |self, ctx| {
-    let var = self.0.op_encode(ctx);
-    let func = self.1.op_encode(ctx).into();
-    let val = OpTree::Op(None, vec![var, func]);
-    op_encode_val::<Function<I, O>>(val, ctx)
-});
+
+struct PrependSchema<S: SchemaType>(PhantomData<S>);
+impl<S: SchemaType> PrependSchema<S> {
+    fn op_encode(op: OpTree, _ctx: &mut EncodeContext) -> OpTree {
+        let schema = OpTree::LengthPrefix(OpTree::Data(S::to_schema().0).into());
+        OpTree::Op(None, vec![schema, op])
+    }
+}
+
+struct Skippable;
+impl Skippable {
+    fn op_encode(op: OpTree, _ctx: &mut EncodeContext) -> OpTree {
+        OpTree::LengthPrefix(op.into())
+    }
+}
 
 
+
+opcode!(#VAL, Function<I, O>,
+    Function<I: SchemaType, O: SchemaType>
+    (!(PrependSchema::<Function<I, O>>) VarId<I>, !(Skippable) RR<O>)
+);

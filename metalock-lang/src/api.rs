@@ -10,7 +10,7 @@ pub fn rr<R: SchemaType, O: Op<R> + 'static>(op: O) -> RR<R> {
 }
 pub fn to_function<B: ToRR<O>, I: SchemaType, O: SchemaType, F: FnOnce(RR<I>) -> B + 'static + Clone>(f: F) -> RR<Function<I, O>> {
     let var = Var::new();
-    Function(var.0.clone(), f(var.rr()).rr().into()).rr()
+    Function(var.0.clone(), f(var.rr()).rr()).rr()
 }
 pub fn assert(cond: impl ToRR<bool>, s: impl Into<String>) -> RR<()> {
     let s: String = s.into();
@@ -277,6 +277,7 @@ mod tests {
         // functions take a reference to an offset and their variables are stored as I+offset
         let f = to_function(|i: RR<u8>| i.add(1));
         let mut r = f.call(10);
+        println!("{:?}", r.encode());
         assert_eq!(r.eval(), 11u8.into());
     }
 

@@ -1,0 +1,16 @@
+[package]
+name = "metalock-types"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+anchor = ["dep:anchor-lang"]
+
+[dependencies]
+anchor-lang = { optional = true, path = "../../anchor/lang" }
+
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
