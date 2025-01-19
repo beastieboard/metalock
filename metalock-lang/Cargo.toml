@@ -1,0 +1,24 @@
+[package]
+name = "metalock"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+metalock-profile = []
+no-profile = []
+measure-cu = []
+profile = []
+anchor = ["dep:anchor-lang"]
+
+[dependencies]
+paste = "1.0.15"
+solana-program = "2.1.9"
+anchor-lang = { optional = true, path = "../../anchor/lang" }
+dyn-clone = "1.0.17"
+
+
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
