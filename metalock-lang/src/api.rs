@@ -284,7 +284,7 @@ mod tests {
     #[should_panic]
     fn test_overflow() {
         let mut comp = 200u8.add(200);
-        //println!("r is: {:?}", comp.eval());
+        println!("r is: {:?}", comp.eval());
     }
 }
 

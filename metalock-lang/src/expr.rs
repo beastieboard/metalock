@@ -206,23 +206,16 @@ use paste::paste;
 macro_rules! opcode {
     ($(#$op:ident, )? $ret:ty, $name:ident
      <$($param:ident$(: $tr:path)?),*>
-     ($($f0:ident $(<$($f1:ty),*>)? ),*)
+     ($($f0:ident $(<$($f1:ty),*>)? ),*),
+     |$self:ident, $ctx:ident| $expr:expr
     ) => {
         #[derive(Clone, Debug)]
         pub struct $name<$($param: Clone $(+ $tr)*),*>($(pub $f0 $(<$($f1),*>)? ),*);
         impl<$($param: Clone + std::fmt::Debug $(+ $tr)*),*> Op<$ret> for $name<$($param),*> {}
         impl<$($param: Clone + std::fmt::Debug $(+ $tr)*),*> OpEncode for $name<$($param),*> {
             #[allow(unused)]
-            fn op_encode(&mut self, ctx: &mut EncodeContext) -> OpTree {
-                let mut opcode: Option<u8> = None;
-                $(opcode = Some(OP::$op(Default::default()).into());)?
-                let mut trees = Vec::<OpTree>::new();
-                macro_rules! mm {
-                    ($i:tt, PhantomData) => { };
-                    ($i:tt, $fi:tt) => { trees.push(self.$i.op_encode(ctx)); };
-                }
-                each_field!(|mm| $($f0),*);
-                OpTree::Op(opcode, trees)
+            fn op_encode(&mut $self, $ctx: &mut EncodeContext) -> OpTree {
+                $expr
             }
         }
         paste! {
@@ -237,6 +230,25 @@ macro_rules! opcode {
                 RR::new(self.clone())
             }
         }
+    };
+    ($(#$op:ident, )? $ret:ty, $name:ident
+     <$($param:ident$(: $tr:path)?),*>
+     ($($f0:ident $(<$($f1:ty),*>)? ),*)
+    ) => {
+        opcode!(
+            $(#$op, )? $ret, $name<$($param$(: $tr)?),*>
+            ($($f0 $(<$($f1),*>)? ),*), |self, ctx| {
+                let mut opcode: Option<u8> = None;
+                $(opcode = Some(OP::$op(Default::default()).into());)?
+                let mut trees = Vec::<OpTree>::new();
+                macro_rules! mm {
+                    ($i:tt, PhantomData) => { };
+                    ($i:tt, $fi:tt) => { trees.push(self.$i.op_encode(ctx)); };
+                }
+                each_field!(|mm| $($f0),*);
+                OpTree::Op(opcode, trees)
+             }
+        );
     };
 }
 
@@ -267,16 +279,18 @@ impl<A: SchemaType> ToRR<A> for Val<A> {
 }
 impl_deref!([A: Clone], Val<A>, RD, 0);
 impl<A: SchemaType + std::fmt::Debug> Op<A> for Val<A> {}
+fn op_encode_val<A: SchemaType>(val: OpTree, _ctx: &mut EncodeContext) -> OpTree {
+    OpTree::Op(
+        Some(OP::VAL(()).into()),
+        vec![
+            OpTree::LengthPrefix(OpTree::Data(A::to_schema().0).into()),
+            val
+        ]
+    )
+}
 impl<A: SchemaType> OpEncode for Val<A> {
-    fn op_encode(&mut self, _ctx: &mut EncodeContext) -> OpTree {
-        let s = A::to_schema().0;
-        let out = vec![
-            OpTree::Data((s.len() as u16).rd_encode()),
-            OpTree::Data(s),
-            OpTree::Data(self.0.rd_encode()),
-        ];
-        //ctx.val_size += out.len();
-        OpTree::Op(Some(OP::VAL(Default::default()).into()), out)
+    fn op_encode(&mut self, ctx: &mut EncodeContext) -> OpTree {
+        op_encode_val::<A>(OpTree::Data(self.0.rd_encode()), ctx)
     }
 }
 impl<A: SchemaType + Clone> Val<A> {
@@ -351,20 +365,11 @@ opcode!(#GET_STRUCT_FIELD, R, GetStructField<S, R>(RR<S>, u8, u32, PhantomData<R
 opcode!(#SET_STRUCT_FIELD, S, SetStructField<S: SchemaType, R: SchemaType>(RR<S>, u8, u32, RR<R>));
 
 
+opcode!(#VAL, Function<I, O>, Function<I: SchemaType, O: SchemaType>(VarId<I>, Jump<O>), |self, ctx| {
+    let var = self.0.op_encode(ctx);
+    let func = self.1.op_encode(ctx).into();
+    let val = OpTree::Op(None, vec![var, func]);
+    op_encode_val::<Function<I, O>>(val, ctx)
+});
 
-#[derive(Clone, Debug)]
-pub struct Function<I: SchemaType, O: SchemaType>(pub(crate) VarId<I>, pub(crate) RR<O>);
-impl<I: SchemaType, O: SchemaType> OpEncode for Function<I, O> {
-    fn op_encode(&mut self, ctx: &mut EncodeContext) -> OpTree {
-        self.0.populate(ctx);
-        let f = EncodedFunction(*self.0, self.1.op_encode(ctx).join());
-        Val::<Self>::new(f.into()).op_encode(ctx)
-    }
-}
-impl<I: SchemaType, O: SchemaType> Op<Function<I, O>> for Function<I, O> {}
-impl<I: SchemaType, O: SchemaType> ToRR<Function<I, O>> for Function<I, O> {
-    fn rr(&self) -> RR<Function<I, O>> {
-        RR::new(self.clone())
-    }
-}
 
