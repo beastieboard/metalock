@@ -1,16 +1,14 @@
 
 use std::marker::PhantomData;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::usize;
 
-use crate::compile::OpTree;
 use crate::eval::Evaluator;
 use crate::eval::EvaluatorContext;
-use crate::types::impl_deref;
-use crate::types::impl_into;
-use crate::types::each_field;
-use crate::newval::SchemaType;
-use crate::types::*;
-use crate::encode::*;
+use metalock_types::*;
+use metalock_types::tlist::*;
+
 #[cfg(feature = "anchor")]
 use crate::types::anchor::*;
 
@@ -27,7 +25,7 @@ pub(crate) enum OP {
     AND(AndParser) = 0x04,
     OR(OrParser) = 0x05,
     NOT(NotParser) = 0x06,
-    VAL(()) = 0x07,
+    VAL(ValParser) = 0x07,
     SEQ(SeqParser) = 0x0a,
     TO_SOME(ToSomeParser) = 0x20,
     FROM_SOME(FromSomeParser) = 0x21,
@@ -58,7 +56,49 @@ impl_into!([], u8, OP, |self| unsafe { std::mem::transmute::<OP, u8>(self) });
 
 
 
+#[derive(Debug, Clone)]
+pub enum OpTree {
+    Op(Option<u8>, Vec<OpTree>),
+    LengthPrefix(Box<OpTree>),
+    Data(Vec<u8>),
+}
 
+
+
+
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
+pub struct VarId<I>(usize, PhantomData<I>);
+impl<I> Deref for VarId<I> {
+    type Target = u16;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*(self.0 as *const u16) }
+    }
+}
+impl<I> DerefMut for VarId<I> {
+    fn deref_mut(&mut self) -> &mut u16 {
+        unsafe { &mut *(self.0 as *const u16 as *mut u16) }
+    }
+}
+impl<I> Decode for VarId<I> {
+    fn rd_decode(buf: Buf) -> std::result::Result<Self, String> {
+        Ok(VarId::from(u16::rd_decode(buf)?))
+    }
+}
+impl<I> VarId<I> {
+    pub fn new() -> Self {
+        Self::from(u16::MAX)
+    }
+    pub fn from(var_id: u16) -> VarId<I> {
+        let ptr = Box::leak(Box::new(var_id)) as *mut u16 as *mut () as usize;
+        VarId(ptr, PhantomData::default())
+    }
+    pub fn populate(&mut self, ctx: &mut EncodeContext) {
+        if **self == u16::MAX {
+            **self = ctx.next();
+        }
+    }
+}
 
 
 
@@ -78,16 +118,16 @@ impl<R: Encode> OpEncode for R {
 
 clone_trait_object!(<R> Op<R>);
 pub trait Op<R: std::fmt::Debug>: DynClone + OpEncode + std::fmt::Debug {
-    fn eval(&mut self) -> RD {
-        self.eval_with_context(Default::default(), usize::MAX)
-    }
-    fn encode(&mut self) -> Vec<u8> {
-        self.op_encode(&mut EncodeContext::new()).join()
-    }
-    fn eval_with_context(&mut self, ctx: EvaluatorContext, dedupe_threshold: usize) -> RD {
-        let o = self.op_encode(&mut EncodeContext::new()).join_threshold(dedupe_threshold);
-        Evaluator::new(&mut o.as_ref(), ctx).run(RD::Unit())
-    }
+    //fn eval(&mut self) -> RD {
+    //    self.eval_with_context(Default::default(), usize::MAX)
+    //}
+    //fn encode(&mut self) -> Vec<u8> {
+    //    self.op_encode(&mut EncodeContext::new()).join()
+    //}
+    //fn eval_with_context(&mut self, ctx: EvaluatorContext, dedupe_threshold: usize) -> RD {
+    //    let o = self.op_encode(&mut EncodeContext::new()).join_threshold(dedupe_threshold);
+    //    Evaluator::new(&mut o.as_ref(), ctx).run(RD::Unit())
+    //}
 }
 
 
@@ -97,7 +137,7 @@ pub trait Op<R: std::fmt::Debug>: DynClone + OpEncode + std::fmt::Debug {
  */
 
 pub struct RR<R>(pub Box<dyn Op<R>>);
-impl_deref!([R], RR<R>, Box<dyn Op<R>>, 0);
+impl_deref!([R], RR<R> => Box<dyn Op<R>>, 0);
 impl<R: std::fmt::Debug> RR<R> {
     pub fn new<O: Op<R> + 'static>(op: O) -> RR<R> {
         RR(Box::new(op))
@@ -159,68 +199,41 @@ pub(crate) trait HasParser {
 }
 
 
-
-macro_rules! field_wrapper {
-    ($name:ident<$($param:ident$(: $tr:ident)?),*>($f0:ty), |$self:ident, $ctx:ident| $encode:expr) => {
-        #[derive(Clone, Debug)]
-        pub struct $name<$($param: Clone $(+ $tr)*),*>(pub $f0);
-        impl<$($param: Clone $(+ $tr)*),*> OpEncode for $name<$($param),*> {
-            #[allow(unused)]
-            fn op_encode(&mut $self, $ctx: &mut EncodeContext) -> OpTree {
-                $encode
-            }
-        }
-        impl<$($param: SchemaType $(+ $tr)?),*> Into<$name<$($param),*>> for $f0 {
-            fn into(self) -> $name<$($param),*> {
-                $name(self)
-            }
-        }
-    };
-}
-
-type RRFunction<I, O> = RR<Function<I, O>>;
-
 macro_rules! parser_type {
-    (RR) => { RR<()> };
-    (RRFunction) => { RR<Function<(), ()>> };
-    (Jump) => { Jump<()> };
-    (Var) => { u16 };
-    (Function) => { Function<(), ()> };
-    (VarId) => { VarId<()> };
+    ((RR<Function<$($t:tt)*)) => { RR<Function<(), ()>> };
+    ((RR $($t:tt)*)) => { RR<()> };
+    ((Skippable)) => { Skippable };
+    ((VarId $($t:tt)*)) => { VarId<()> };
+    ((PrependSchema::<$t:ty>)) => { PrependSchema<()> };
     ($t:ident) => { $t };
 }
 macro_rules! parser_type_2 {
-    (PhantomData $($r:ident)*) => { parser_type_2!($($r)*) };
-    ($t:ident $($r:ident)*) => { TCons<parser_type!($t), parser_type_2!($($r)*)> };
+    ((PhantomData $($t:tt)*) $($r:ident)*) => { parser_type_2!($($r)*) };
+    ($t:tt $($r:tt)*) => { TCons<parser_type!($t), parser_type_2!($($r)*)> };
     () => { () };
 }
 
 use paste::paste;
 
-// There should be blocked scoped variables, so during compilation the blocks need to be
-// identified.
-// Var should create an anon memory address, then this can be assigned a nonce during compile.
-
 macro_rules! opcode {
     ($(#$op:ident, )? $ret:ty, $name:ident
      <$($param:ident$(: $tr:path)?),*>
-     ($($(!$mod:tt )* $f0:ident $(<$($f1:ty),*>)? ),*),
+     ($($f0:tt $([$($mod:tt)*])?),*),
      |$self:ident, $ctx:ident| $expr:expr
     ) => {
         #[derive(Clone, Debug)]
-        pub struct $name<$($param: Clone $(+ $tr)*),*>($(pub $f0 $(<$($f1),*>)? ),*);
+        #[allow(unused_parens)]
+        pub struct $name<$($param: Clone $(+ $tr)*),*>($(pub $f0),*);
         impl<$($param: Clone + std::fmt::Debug $(+ $tr)*),*> Op<$ret> for $name<$($param),*> {}
         impl<$($param: Clone + std::fmt::Debug $(+ $tr)*),*> OpEncode for $name<$($param),*> {
             #[allow(unused)]
-            fn op_encode(&mut $self, $ctx: &mut EncodeContext) -> OpTree {
-                $expr
-            }
+            fn op_encode(&mut $self, $ctx: &mut EncodeContext) -> OpTree { $expr }
         }
         paste! {
             #[derive(Clone, Debug, PartialEq, Eq, Default)]
             pub struct [<$name Parser>];
             impl HasParser for [<$name Parser>] {
-                type R = parser_type_2!($($f0)*);
+                type R = parser_type_2!($($($($mod)*)? $f0)*);
             }
         }
         impl<$($param: SchemaType $(+ $tr)*),*> ToRR<$ret> for $name<$($param),*> {
@@ -231,25 +244,25 @@ macro_rules! opcode {
     };
     ($(#$op:ident, )? $ret:ty, $name:ident
      <$($param:ident$(: $tr:path)?),*>
-     ($($(!$mod:tt )* $f0:ident $(<$($f1:ty),*>)? ),*)
+     ($($f0:tt $([$($mod:tt)*])? ),*)
     ) => {
         opcode!(
             $(#$op, )? $ret, $name<$($param$(: $tr)?),*>
-            ($($(!$mod )* $f0 $(<$($f1),*>)? ),*), |self, ctx| {
-                opcode!(|self, ctx| $($op, )? ($($(!$mod )* $f0),*) $)
+            ($($f0 $([$($mod),*])?),*), |self, ctx| {
+                opcode!(|self, ctx| $($op, )? ($($f0 [$($($mod)*)?]),*) $)
              }
         );
     };
-    // note $dol (https://stackoverflow.com/a/53971532)
-    (|$self:ident,$ctx:ident| $($op:ident, )? ($($(!$mod:tt )* $f0:ident),*) $dol:tt) => {
+    // note $dol (https://stackoverflow.com/a/53971532) (forced to call another matcher)
+    (|$self:ident,$ctx:ident| $($op:ident, )? ($($f0:tt [$($mod:tt)*] ),*) $D:tt) => {
         { let mut opcode: Option<u8> = None;
                 $(opcode = Some(OP::$op(Default::default()).into());)?
                 let mut trees = Vec::<OpTree>::new();
                 macro_rules! mm {
-                    ($i:tt, (PhantomData)) => { };
-                    ($i:tt, ($fi:tt $dol(($mia:ty)),*)) => {
-                        let mut t = $self.$i.op_encode($ctx);
-                        $dol(t = <$mia>::op_encode(t, $ctx);)*
+                    ($i:tt, ((PhantomData<$D($t:tt)*))) => { };
+                    ($i:tt, ($fi:tt $D($mia:tt),*)) => {
+                        let t = $self.$i.op_encode($ctx);
+                        $D(let t = <$mia>::op_encode(t, $ctx);)*
                         trees.push(t);
                     };
                 }
@@ -258,52 +271,41 @@ macro_rules! opcode {
     };
 }
 
+impl<I: SchemaType, O: SchemaType> SchemaType for Function<I, O> {
+    type Items = ();
+    fn encode_schema(out: &mut Vec<u8>) {
+        out.push(tag::FUNCTION::ID);
+        I::encode_schema(out);
+        O::encode_schema(out);
+    }
+}
 
-opcode!(#CALL, O, Call<I: SchemaType, O: SchemaType>(RR<I>, RRFunction<I, O>));
+opcode!(#VAL, Function<I, O>, Function<I: SchemaType, O: SchemaType>(
+        (VarId<I>) [(PrependSchema::<Function<I, O>>)],
+        (RR<O>) [Skippable]
+));
 
-opcode!(#EQ, bool, Equals<T>(RR<T>, RR<T>));
-opcode!(#ADD, T, Add<T: std::ops::Add>(RR<T>, RR<T>));
+opcode!(#CALL, O, Call<I: SchemaType, O: SchemaType>((RR<I>), (RR<Function<I, O>>)));
 
-opcode!(#AND, bool, And<>(RR<bool>, Jump<bool>));
-opcode!(#OR,  bool, Or<>(RR<bool>, Jump<bool>));
+opcode!(#EQ, bool, Equals<T>((RR<T>), (RR<T>)));
+opcode!(#ADD, T, Add<T: std::ops::Add>((RR<T>), (RR<T>)));
 
-pub(crate) trait HasLen { }
+opcode!(#AND, bool, And<>((RR<bool>), (RR<bool>) [Skippable]));
+opcode!(#OR,  bool, Or<>((RR<bool>), (RR<bool>) [Skippable]));
+
+pub trait HasLen { }
 impl<I> HasLen for Vec<I> { }
 impl HasLen for Buffer { }
 impl HasLen for String { }
 
-opcode!(#LEN, u16, Length<I: HasLen>(RR<I>));
+opcode!(#LEN, u16, Length<I: HasLen>((RR<I>)));
 
-opcode!(#NOT, bool, Not<>(RR<bool>));
+opcode!(#NOT, bool, Not<>((RR<bool>)));
 
-
-#[derive(Clone, Debug)]
-pub(crate) struct Val<A: Clone>(pub RD, pub PhantomData<A>);
-impl<A: SchemaType> ToRR<A> for Val<A> {
-    fn rr(&self) -> RR<A> {
-        RR::new(self.clone())
-    }
-}
-impl_deref!([A: Clone], Val<A>, RD, 0);
-impl<A: SchemaType + std::fmt::Debug> Op<A> for Val<A> {}
-fn op_encode_val<A: SchemaType>(val: OpTree, _ctx: &mut EncodeContext) -> OpTree {
-    OpTree::Op(
-        Some(OP::VAL(()).into()),
-        vec![
-            OpTree::LengthPrefix(OpTree::Data(A::to_schema().0).into()),
-            val
-        ]
-    )
-}
-impl<A: SchemaType> OpEncode for Val<A> {
-    fn op_encode(&mut self, ctx: &mut EncodeContext) -> OpTree {
-        op_encode_val::<A>(OpTree::Data(self.0.rd_encode()), ctx)
-    }
-}
+opcode!(#VAL, A, Val<A: SchemaType>(RD [(PrependSchema::<A>)], (PhantomData<A>)));
+impl_deref!([A: SchemaType], Val<A> => RD, 0);
 impl<A: SchemaType + Clone> Val<A> {
-    pub fn new(rd: RD) -> Val<A> {
-        Val(rd, ph())
-    }
+    pub fn new(rd: RD) -> Val<A> { Val(rd, ph()) }
 }
 impl<A: SchemaType + Into<RD>> From<A> for Val<A> {
     fn from(value: A) -> Self {
@@ -312,24 +314,17 @@ impl<A: SchemaType + Into<RD>> From<A> for Val<A> {
 }
 
 
-field_wrapper!(Jump<R>(RR<R>), |self, ctx| OpTree::LengthPrefix(self.0.op_encode(ctx).into()));
-impl From<&str> for Jump<String> {
-    fn from(s: &str) -> Self {
-        RR::val(s.into()).into()
-    }
-}
 
-
-opcode!(#IF, O, If<O: Clone>(RR<bool>, Jump<O>, Jump<O>));
+opcode!(#IF, O, If<O: Clone>((RR<bool>), (RR<O>) [Skippable], (RR<O>) [Skippable]));
 #[cfg(feature = "anchor")]
 opcode!(#INVOKE_SIGNED, (), InvokeSigned<>(RR<MetalockProxyCall>));
 opcode!(#GET_INVOKE_RETURN, Buffer, GetInvokeReturn<>());
 
 
-opcode!(#PANIC, A, Panic<A>(String, PhantomData<A>));
-opcode!(#ASSERT, (), Assert<>(RR<bool>, Jump<String>));
-opcode!(#INDEX, O, Index<O>(RR<Vec<O> >, RR<u16>));
-opcode!(#SLICE, Vec<O>, Slice<O>(RR<Vec<O> >, RR<u16>));
+opcode!(#PANIC, A, Panic<A>(String, (PhantomData<A>)));
+opcode!(#ASSERT, (), Assert<>((RR<bool>), (RR<String>) [Skippable]));
+opcode!(#INDEX, O, Index<O>((RR<Vec<O> >), (RR<u16>)));
+opcode!(#SLICE, Vec<O>, Slice<O>((RR<Vec<O> >), (RR<u16>)));
 
 
 pub(crate) fn ph<T: Default>() -> T { Default::default() }
@@ -340,35 +335,35 @@ impl<I> OpEncode for VarId<I> {
         OpTree::Data((**self).rd_encode())
     }
 }
-opcode!(#VAR, I, Var<I>(VarId<I>));
+opcode!(#VAR, I, Var<I>((VarId<I>)));
 impl<I: SchemaType> Var<I> {
     pub fn new() -> Var<I> {
         Var(VarId::new())
     }
 }
-opcode!(#SETVAR, (), SetVar<I>(VarId<I>, RR<I>));
+opcode!(#SETVAR, (), SetVar<I>((VarId<I>), (RR<I>)));
 
 
-opcode!(#MAP, Option<O>, MapOption<I: SchemaType, O: SchemaType>(RR<Option<I>>, RRFunction<I, O>));
-opcode!(#MAP, Vec<O>,    Map<I: SchemaType, O: SchemaType>(RR<Vec<I>>,          RRFunction<I, O>));
-opcode!(#ALL, bool,      All<I: SchemaType, V: IntoIterator<Item=I>>(RR<V>,     RRFunction<I, bool>));
-opcode!(#ANY, bool,      Any<I: SchemaType, V: IntoIterator<Item=I>>(RR<V>,     RRFunction<I, bool>));
-opcode!(#EACH, (),       Each<I: SchemaType, V: IntoIterator<Item=I> >(RR<V>,   RRFunction<I, ()>));
+opcode!(#MAP, Option<O>, MapOption<I: SchemaType, O: SchemaType>((RR<Option<I>>), (RR<Function<I, O>>)));
+opcode!(#MAP, Vec<O>,    Map<I: SchemaType, O: SchemaType>((RR<Vec<I>>),          (RR<Function<I, O>>)));
+opcode!(#ALL, bool,      All<I: SchemaType, V: IntoIterator<Item=I>>((RR<V>),     (RR<Function<I, bool>>)));
+opcode!(#ANY, bool,      Any<I: SchemaType, V: IntoIterator<Item=I>>((RR<V>),     (RR<Function<I, bool>>)));
+opcode!(#EACH, (),       Each<I: SchemaType, V: IntoIterator<Item=I> >((RR<V>),   (RR<Function<I, ()>>)));
 
-opcode!(#TO_SOME, Option<I>, ToSome<I>(RR<I>));
-opcode!(#FROM_SOME, I, FromSome<I>(RR<Option<I> >, Jump<I>));
-opcode!(#OR_SOME, Option<I>, OrSome<I>(RR<Option<I> >, Jump<Option<I> >));
-
-
-
-opcode!(#SEQ, R, Seq<R>(RR<()>, RR<R>));
-
-opcode!(#GET_STRUCT_FIELD, R, GetStructField<S, R>(RR<S>, u8, u32, PhantomData<R>));
-opcode!(#SET_STRUCT_FIELD, S, SetStructField<S: SchemaType, R: SchemaType>(RR<S>, u8, u32, RR<R>));
+opcode!(#TO_SOME, Option<I>, ToSome<I>((RR<I>)));
+opcode!(#FROM_SOME, I, FromSome<I>((RR<Option<I>>), (RR<I>) [Skippable]));
+opcode!(#OR_SOME, Option<I>, OrSome<I>((RR<Option<I>>), (RR<Option<I>>) [Skippable]));
 
 
 
-struct PrependSchema<S: SchemaType>(PhantomData<S>);
+opcode!(#SEQ, R, Seq<R>((RR<()>), (RR<R>)));
+
+opcode!(#GET_STRUCT_FIELD, R, GetStructField<S, R>((RR<S>), u8, u32, (PhantomData<R>)));
+opcode!(#SET_STRUCT_FIELD, S, SetStructField<S: SchemaType, R: SchemaType>((RR<S>), u8, u32, (RR<R>)));
+
+
+
+pub(crate) struct PrependSchema<S: SchemaType>(PhantomData<S>);
 impl<S: SchemaType> PrependSchema<S> {
     fn op_encode(op: OpTree, _ctx: &mut EncodeContext) -> OpTree {
         let schema = OpTree::LengthPrefix(OpTree::Data(S::to_schema().0).into());
@@ -376,7 +371,7 @@ impl<S: SchemaType> PrependSchema<S> {
     }
 }
 
-struct Skippable;
+pub(crate) struct Skippable;
 impl Skippable {
     fn op_encode(op: OpTree, _ctx: &mut EncodeContext) -> OpTree {
         OpTree::LengthPrefix(op.into())
@@ -384,8 +379,3 @@ impl Skippable {
 }
 
 
-
-opcode!(#VAL, Function<I, O>,
-    Function<I: SchemaType, O: SchemaType>
-    (!(PrependSchema::<Function<I, O>>) VarId<I>, !(Skippable) RR<O>)
-);

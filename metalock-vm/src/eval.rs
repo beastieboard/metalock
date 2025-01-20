@@ -9,9 +9,9 @@ use anchor_lang::{prelude::*, solana_program as sp};
 #[cfg(feature = "anchor")]
 use crate::types::anchor::*;
 
-use crate::newval::SchemaType;
-use crate::{native::Native, newval::data_parse};
-use crate::types::*;
+use metalock_types::*;
+use metalock_types::tlist::*;
+use crate::native::*;
 use crate::expr::*;
 
 
@@ -199,7 +199,7 @@ impl Evaluator {
             },
 
             //
-            OP::VAL(_) => {
+            OP::VAL(p) => {
                 data_parse(&mut self.buf).expect("failed reading data")
             },
             OP::VAR(p) => {
@@ -374,54 +374,56 @@ impl<'a, A, T: TList> EvalParser<'a, TCons<A, T>> {
         EvalParser(eval, PhantomData::default())
     }
 }
+macro_rules! wrap_tcons {
+    ($head:ty, $($rest:ty),*) => {
+        TCons<$head, wrap_tcons!($($rest),*)>
+    };
+    ($head:ty) => { $head };
+}
 macro_rules! parser_taker {
-    (<$($param:ident$(: $tr0:ident)?),*> $matcher:ty, $name:ident, $(@<$($f:ident: $t:ident)*>)?$ret:ty, |$self:ident| $expr:expr) => {
+    (<$($param:ident$(: $tr0:ident)?),*> ($($matcher:ty),*), $name:ident, $(@<$($f:ident: $t:ident)*>)?$ret:ty, |$self:ident| $expr:expr) => {
         #[allow(unused)]
-        impl<'a, B, T: TList$(, $param$(: $tr0)?)*> EvalParser<'a, TCons<$matcher, TCons<B, T>>> {
+        impl<'a, B, T: TList$(, $param$(: $tr0)?)*> EvalParser<'a, wrap_tcons!($($matcher,)* TCons<B, T>)> {
             pub fn $name$(<$($f: $t)*>)?($self) -> C<'a, $ret, TCons<B, T>> {
                 C($expr, EvalParser($self.0, PhantomData::default()))
             }
         }
         #[allow(unused)]
-        impl<'a, E, B, T: TList$(, $param$(: $tr0)?)*> C<'a, E, TCons<$matcher, TCons<B, T>>> {
+        impl<'a, E, B, T: TList$(, $param$(: $tr0)?)*> C<'a, E, wrap_tcons!($($matcher,)* TCons<B, T>)> {
             pub fn $name$(<$($f: $t)*>)?($self) -> C<'a, (E, $ret), TCons<B, T>> {
                 let C(r, p) = $self.1.$name();
                 C(($self.0, r), p)
             }
-            //pub fn drop($self) -> C<'a, E, TCons<B, T>> {
-            //    let C(_, p) = $self.1.$name();
-            //    C($self.0, p)
-            //}
         }
         #[allow(unused)]
-        impl<'a $(, $param$(: $tr0)?)*> EvalParser<'a, TCons<$matcher, ()>> {
+        impl<'a $(, $param$(: $tr0)?)*> EvalParser<'a, wrap_tcons!($($matcher,)* ())> {
             pub fn $name$(<$($f: $t)*>)?($self) -> $ret { $expr }
         }
         #[allow(unused)]
-        impl<'a, E $(, $param$(: $tr0)?)*> C<'a, E, TCons<$matcher, ()>> {
+        impl<'a, E $(, $param$(: $tr0)?)*> C<'a, E, wrap_tcons!($($matcher,)* ())> {
             pub fn $name$(<$($f: $t)*>)?($self) -> (E, $ret) {
                 ($self.0, $self.1.$name())
             }
         }
     };
 }
-parser_taker!(<> RR<()>, eval_as, @<O: FromRD> O, |self| {
+parser_taker!(<> (RR<()>), eval_as, @<O: FromRD> O, |self| {
     self.0.eval()._as()
 });
-parser_taker!(<> RR<()>, eval, RD, |self| {
+parser_taker!(<> (RR<()>), eval, RD, |self| {
     self.0.eval()
 });
-parser_taker!(<S: Decode> S, take, S, |self| {
+parser_taker!(<S: Decode> (S), take, S, |self| {
     self.0.buf.decode()
 });
-parser_taker!(<R: SchemaType> Jump<R>, skip, (), |self| {
+parser_taker!(<N> (Skippable, N), skip, (), |self| {
     let n: u16 = self.0.buf.decode();
     self.0.buf.skip_bytes(n as usize);
 });
-parser_taker!(<> Jump<()>, eval, RD, |self| {
+parser_taker!(<> (Skippable, RR<()>), eval, RD, |self| {
     self.0.buf.skip_bytes(2);
     self.0.eval()
 });
-parser_taker!(<> RR<Function<(), ()>>, take_fun1, &'static EncodedFunction, |self| {
+parser_taker!(<> (RR<Function<(), ()>>), take_fun1, &'static EncodedFunction, |self| {
     self.0.eval()._as()
 });

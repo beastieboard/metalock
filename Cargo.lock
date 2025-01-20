@@ -1095,11 +1095,32 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "dyn-clone",
+ "metalock-types",
+ "metalock-vm",
  "paste",
  "pretty_assertions",
  "quickcheck",
  "quickcheck_macros",
  "solana-program 2.1.9",
+]
+
+[[package]]
+name = "metalock-types"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "pretty_assertions",
+ "quickcheck",
+ "quickcheck_macros",
+]
+
+[[package]]
+name = "metalock-vm"
+version = "0.1.0"
+dependencies = [
+ "dyn-clone",
+ "metalock-types",
+ "paste",
 ]
 
 [[package]]

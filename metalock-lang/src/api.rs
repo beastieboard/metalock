@@ -1,9 +1,9 @@
 
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
-use crate::{expr::*, newval::SchemaType, types::RD};
+use metalock_vm::expr::*;
+use metalock_types::*;
 
-pub use crate::expr::{RR, Function};
 
 pub fn rr<R: SchemaType, O: Op<R> + 'static>(op: O) -> RR<R> {
     RR::new(op)
@@ -21,37 +21,43 @@ pub fn panic(s: impl Into<String>) -> RR<()> {
 }
 
 
-impl<I: SchemaType> RR<I> {
-    pub fn equals(self, other: impl ToRR<I>) -> RR<bool> {
-        rr(Equals(self, other.rr()))
-    }
-    pub fn write(self, var: &Var<I>) -> RR<()> {
-        rr(SetVar(var.0.clone(), self))
-    }
-    pub fn bind<O, F>(self, f: F) -> RR<O>
-        where F: FnOnce(RR<I>) -> RR<O>
-    {
-        f(self.rr())
-    }
+
+macro_rules! rr_impl {
+    ($name:ident$(<$($P:ident$(:$tr:path$(;$tr2:path)*)?),*>)? for ToRR<$t:ty> { $($fn:item)* }) => {
+        pub trait $name<$($($P$(:$tr$(+$tr2)*)?),*)?>: ToRR<$t> + Sized { $($fn)* }
+        impl<To: ToRR<$t> $($(,$P$(:$tr$(+$tr2)*)?)*)? > $name$(<$($P),*>)? for To {}
+    };
 }
 
 
-impl<I: std::ops::Add + SchemaType, A: ToRR<I>> ToRRInt<I> for A {}
-pub trait ToRRInt<I: std::ops::Add + SchemaType>: ToRR<I> + Sized {
+rr_impl!(ToRRCommon<I: SchemaType> for ToRR<I> {
+    fn equals(self, other: impl ToRR<I>) -> RR<bool> {
+        rr(Equals(self.rr(), other.rr()))
+    }
+    fn write(self, var: &Var<I>) -> RR<()> {
+        rr(SetVar(var.0.clone(), self.rr()))
+    }
+    fn bind<O, F>(self, f: F) -> RR<O> where F: FnOnce(RR<I>) -> RR<O> {
+        f(self.rr())
+    }
+});
+
+
+rr_impl!(ToRRInt<I: std::ops::Add ; SchemaType> for ToRR<I> {
     fn add(self, other: impl ToRR<I>) -> RR<I> {
         Add(self.rr(), other.rr()).rr()
     }
-}
+});
 
-impl<A: ToRR<()>> ToRRUnit for A {}
-pub trait ToRRUnit: ToRR<()> + Sized {
+
+rr_impl!(ToRRUnit for ToRR<()> {
     fn then<R: SchemaType>(self, other: impl ToRR<R>) -> RR<R> {
         rr(Seq(self.rr(), other.rr()))
     }
-}
+});
 
-impl<I: SchemaType, A: ToRR<Vec<I>>> ToRRVec<I> for A {}
-pub trait ToRRVec<I: SchemaType>: ToRR<Vec<I>> + Sized {
+
+rr_impl!(ToRRVec<I: SchemaType> for ToRR<Vec<I>> {
     fn get(&self, idx: impl Into<RR<u16>>) -> RR<I> {
         rr(Index(self.rr(), idx.into()))
     }
@@ -67,28 +73,24 @@ pub trait ToRRVec<I: SchemaType>: ToRR<Vec<I>> + Sized {
     fn slice(self, idx: impl ToRR<u16>) -> RR<Vec<I>> {
         rr(Slice(self.rr(), idx.rr()))
     }
-}
+});
 
-impl<I: SchemaType, It: IntoIterator<Item=I> + SchemaType, A: ToRR<It>> ToRRIter<I, It> for A {}
-pub trait ToRRIter<I: SchemaType, It: IntoIterator<Item=I> + SchemaType>: ToRR<It> + Sized {
+
+rr_impl!(ToRRIter<I: SchemaType, It: IntoIterator<Item=I>; SchemaType> for ToRR<It> {
     fn each<B: ToRR<()>, F: Fn(RR<I>) -> B + 'static + Clone>(self, f: F) -> RR<()> {
         rr(Each(self.rr(), to_function(f)))
     }
-}
-
-// webpage: DOS look, light grey and red letters on dark grey back
-// METALOCK
+});
 
 
-impl<L: SchemaType + HasLen + 'static> RR<L> {
-    pub fn len(self) -> RR<u16> {
-        rr(Length(self))
+rr_impl!(ToRRHasLen<I: HasLen; SchemaType> for ToRR<I> {
+    fn len(self) -> RR<u16> {
+        rr(Length(self.rr()))
     }
-}
+});
 
 
-impl<A: ToRR<bool>> ToRRBool for A {}
-pub trait ToRRBool: ToRR<bool> + Sized {
+rr_impl!(ToRRBool for ToRR<bool> {
     fn choose<A: SchemaType>(&self, a: impl ToRR<A>, b: impl ToRR<A>) -> RR<A> {
         rr(If(self.rr(), a.rr().into(), b.rr().into()))
     }
@@ -101,57 +103,55 @@ pub trait ToRRBool: ToRR<bool> + Sized {
     fn not(&self) -> RR<bool> {
         rr(Not(self.rr()))
     }
-}
+});
 
-impl<I: SchemaType, A: ToRR<Option<I>>> ToRROption<I> for A {}
-pub trait ToRROption<I: SchemaType>: ToRR<Option<I>> + Sized {
+
+rr_impl!(ToRROption<I: SchemaType> for ToRR<Option<I>> {
     fn map<F: FnOnce(RR<I>) -> RR<O> + Clone + 'static, O: SchemaType>(self, f: F) -> RR<Option<O>> {
         rr(MapOption(self.rr(), to_function(f)))
     }
-}
-
-
-
-impl<I: SchemaType, O: SchemaType> RR<Function<I, O>> {
-    fn call(&self, input: impl ToRR<I>) -> RR<O> {
-        Call(input.rr(), self.clone()).rr()
+    fn m_else(self, alt: impl ToRR<I>) -> RR<I> {
+        rr(FromSome(self.rr(), alt.rr().into()))
     }
-}
+    fn m_elseif(self, c: RR<bool>, r: RR<I>) -> RR<Option<I>> {
+        rr(OrSome(self.rr(), m_if(c, r).into()))
+    }
+});
+
+
+
+rr_impl!(ToRRFunction<I: SchemaType, O: SchemaType> for ToRR<Function<I, O>> {
+    fn call(&self, input: impl ToRR<I>) -> RR<O> {
+        Call(input.rr(), self.rr()).rr()
+    }
+});
 
 pub fn m_if<O: SchemaType>(c: RR<bool>, r: impl ToRR<O>) -> RR<Option<O>> {
     rr(If(c, rr(ToSome(r.rr())).into(), Val::new(RD::none()).rr().into()))
 }
 
 
-impl<O: SchemaType + Into<RD>> RR<Option<O>> {
-    pub fn m_else(self, alt: impl ToRR<O>) -> RR<O> {
-        rr(FromSome(self, alt.rr().into()))
+rr_impl!(ToRROptionOption<I: SchemaType; Into<RD>> for ToRR<Option<Option<I>>> {
+    fn join(self) -> RR<Option<I>> {
+        rr(FromSome(self.rr(), None.rr().into()))
     }
-    pub fn m_elseif(self, c: RR<bool>, r: RR<O>) -> RR<Option<O>> {
-        rr(OrSome(self, m_if(c, r).into()))
-    }
-}
+});
 
-impl<O: SchemaType + Into<RD>> RR<Option<Option<O>>> {
-    pub fn join(self) -> RR<Option<O>> {
-        rr(FromSome(self, None.rr().into()))
-    }
-}
-
-impl<A: SchemaType, B: SchemaType> RR<(A, B)> {
-    pub fn unpack(self) -> (RR<A>, RR<B>) {
-        let tup_a: RR<Vec<A>> = unsafe { std::mem::transmute(self.clone()) };
-        let tup_b: RR<Vec<B>> = unsafe { std::mem::transmute(self) };
+rr_impl!(ToRRTup2<A: SchemaType, B: SchemaType> for ToRR<(A, B)> {
+    fn unpack(self) -> (RR<A>, RR<B>) {
+        let r = self.rr();
+        let tup_a: RR<Vec<A>> = unsafe { std::mem::transmute(r.clone()) };
+        let tup_b: RR<Vec<B>> = unsafe { std::mem::transmute(r) };
         (tup_a.get(0), tup_b.get(1))
     }
-}
+});
 
 
-impl<T: SchemaType> Var<T> {
-    pub fn get(&self) -> RR<T> {
-        rr(self.clone())
-    }
-}
+//impl<T: SchemaType> Var<T> {
+//    pub fn get(&self) -> RR<T> {
+//        rr(self.clone())
+//    }
+//}
 
 
 
@@ -159,6 +159,7 @@ impl<T: SchemaType> Var<T> {
 mod tests {
 
     use super::*;
+    use crate::compile::*;
 
     #[test]
     fn test_and() {
@@ -260,9 +261,15 @@ mod tests {
 
     #[test]
     fn test_join() {
+        type T = Option<Option<bool>>;
         // Join
         let mut comp = RR::val(Some(Some(true))).join();
         assert_eq!(comp.eval(), Some(true).into());
+        let mut comp = RR::<T>::val(Some(None)).join();
+        let none: Option<bool> = None;
+        assert_eq!(comp.eval(), none.into());
+        let mut comp = RR::<T>::val(None).join();
+        assert_eq!(comp.eval(), none.into());
     }
 
     #[test]

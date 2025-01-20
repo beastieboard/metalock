@@ -1,0 +1,9 @@
+[package]
+name = "metalock-vm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+metalock-types = { path = "../metalock-types" }
+paste = "1.0.15"
+dyn-clone = "1.0.17"

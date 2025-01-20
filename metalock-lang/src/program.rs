@@ -1,7 +1,11 @@
 use std::{marker::PhantomData, usize};
 
-use crate::{compile::OpTree, eval::{Evaluator, EvaluatorContext}, expr::*, newval::SchemaType, types::{Schema, VarId, RD}};
 
+use metalock_types::*;
+use metalock_vm::eval::*;
+use metalock_vm::expr::*;
+
+use crate::compile::*;
 
 
 #[derive(Clone)]
@@ -64,7 +68,7 @@ impl<I: SchemaType + Into<RD>, O: SchemaType, F: Fn(RR<I>) -> RR<O>> IntoProgram
 mod tests {
 
     use super::*;
-    use crate::prelude::*;
+    use crate::api::*;
 
     #[test]
     fn test_program() {

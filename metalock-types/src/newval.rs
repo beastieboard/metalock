@@ -7,7 +7,8 @@ use anchor_lang::prelude::{AccountMeta, Pubkey, msg};
 #[cfg(feature = "anchor")]
 use crate::types::anchor::*;
 
-use crate::{data::RD, macros::{impl_deref, impl_into}, parse::{rdd, R}, schema::tag::{self, TagType}, types::{Buffer, Decode, EncodedFunction, Parser, ParserBuffer, Schema}};
+use crate::{data::RD, parse::{rdd, R}, schema::tag::{self, TagType}, types::{Buffer, Decode, EncodedFunction, Parser, ParserBuffer, Schema}};
+use crate::{impl_deref, impl_into};
 use crate::tlist::*;
 
 /*

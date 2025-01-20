@@ -1,26 +1,41 @@
-use std::{collections::BTreeMap, hash::{DefaultHasher, Hasher}};
+use std::{collections::BTreeMap, fmt::Debug, hash::{DefaultHasher, Hasher}, usize};
 
-use crate::encode::Encode;
+use metalock_types::*;
+use metalock_vm::{eval::{Evaluator, EvaluatorContext}, expr::*};
+
+
+impl<R: Debug, O: ?Sized + Op<R>> OpEval<R> for O {}
+pub trait OpEval<R: Debug>: Op<R> {
+    fn eval(&mut self) -> RD {
+        self.eval_with_context(Default::default(), usize::MAX)
+    }
+    fn encode(&mut self) -> Vec<u8> {
+        self.op_encode(&mut EncodeContext::new()).join()
+    }
+    fn eval_with_context(&mut self, ctx: EvaluatorContext, dedupe_threshold: usize) -> RD {
+        let o = self.op_encode(&mut EncodeContext::new()).join_threshold(dedupe_threshold);
+        Evaluator::new(&mut o.as_ref(), ctx).run(RD::Unit())
+    }
+}
 
 
 const FETCH: u8 = 0x03;
 
-#[derive(Debug, Clone)]
-pub enum OpTree {
-    Op(Option<u8>, Vec<OpTree>),
-    LengthPrefix(Box<OpTree>),
-    Data(Vec<u8>),
-}
-
-impl OpTree {
-    pub fn join(&mut self) -> Vec<u8> {
+pub trait OpTreeImpl {
+    fn as_mut_op_tree(&mut self) -> &mut OpTree;
+    fn join(&mut self) -> Vec<u8> {
         self.join_threshold(10)
     }
-    pub fn join_threshold(&mut self, threshold: usize) -> Vec<u8> {
+    fn join_threshold(&mut self, threshold: usize) -> Vec<u8> {
         OpTreeDedup {
             threshold,
             seen: Default::default()
-        }.dedup(self)
+        }.dedup(self.as_mut_op_tree())
+    }
+}
+impl OpTreeImpl for OpTree {
+    fn as_mut_op_tree(&mut self) -> &mut OpTree {
+        self
     }
 }
 
@@ -91,7 +106,7 @@ impl OpTreeDedup {
 mod tests {
 
     use super::*;
-    use crate::{api::ToRRBool, expr::ToRR};
+    use crate::api::*;
 
     #[test]
     fn test_dedup() {

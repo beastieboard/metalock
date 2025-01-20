@@ -3,10 +3,10 @@
 pub(crate) mod anchor;
 
 use crate::parse::R;
-use crate::macros::*;
+use crate::{impl_deref, anchor_derive};
 
 
-pub(crate) type Buf<'a, 'b> = &'a mut &'b [u8];
+pub type Buf<'a, 'b> = &'a mut &'b [u8];
 
 
 
@@ -40,33 +40,6 @@ pub struct EncodedFunction(pub u16, pub Vec<u8>);
 impl_deref!([], EncodedFunction => Vec<u8>, 1);
 
 
-//#[derive(Copy, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
-//pub struct VarId<I>(usize, PhantomData<I>);
-//impl<I> Deref for VarId<I> {
-//    type Target = u16;
-//    fn deref(&self) -> &Self::Target {
-//        unsafe { &*(self.0 as *const u16) }
-//    }
-//}
-//impl<I> DerefMut for VarId<I> {
-//    fn deref_mut(&mut self) -> &mut u16 {
-//        unsafe { &mut *(self.0 as *const u16 as *mut u16) }
-//    }
-//}
-//impl<I> VarId<I> {
-//    pub fn new() -> Self {
-//        Self::from(u16::MAX)
-//    }
-//    pub fn from(var_id: u16) -> VarId<I> {
-//        let ptr = Box::leak(Box::new(var_id)) as *mut u16 as *mut () as usize;
-//        VarId(ptr, PhantomData::default())
-//    }
-//    pub fn populate(&mut self, ctx: &mut EncodeContext) {
-//        if **self == u16::MAX {
-//            **self = ctx.next();
-//        }
-//    }
-//}
 
 
 

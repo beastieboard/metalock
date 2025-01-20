@@ -31,7 +31,6 @@ impl_serialize_any!([], bool, |self| (*self as u8).rd_encode());
 impl_serialize_any!([], [u8; 32], |self| self.as_ref().to_vec());
 impl_serialize_any!([], String, |self| Buffer(self.as_bytes().to_vec()).rd_encode());
 impl_serialize_any!([], (), |self| vec![]);
-//impl_serialize_any!([], &[u8; 32], |self| self.to_vec());
 
 impl_serialize_any!([], Buffer, |self| {
     let mut out = (self.len() as u16).rd_encode();
@@ -54,19 +53,6 @@ impl_serialize_any!([A], Option<A>, |self| {
     }
     out
 });
-
-//impl_serialize_any!([], AccountMeta, |self| {
-//    let mut v = self.pubkey.rd_encode();
-//    let flags = ((self.is_signer as u8) * 2) | (self.is_writable as u8);
-//    v.push(flags);
-//    v
-//});
-//impl_serialize_any!([], MetalockProxyCall, |self| {
-//    let mut v = self.program_id.rd_encode();
-//    v.extend(self.data.rd_encode());
-//    v.extend(self.accounts.rd_encode());
-//    v
-//});
 
 
 fn rd_iterator<T: Encode, I: Iterator<Item=T>>(len: usize, iterator: I) -> Vec<u8> {
