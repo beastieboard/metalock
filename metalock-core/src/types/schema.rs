@@ -1,56 +1,75 @@
-use crate::types::{ParserBuffer, Schema};
+use solana_program::pubkey::Pubkey;
+
+use super::tags::*;
+use super::core::*;
+use super::parse::*;
 
 
-pub mod tag {
-    use std::marker::PhantomData;
+/*
+ * Schema Type
+ */
 
-    use crate::types::{ParserBuffer, Schema};
-    use crate::tlist::*;
-
-    pub trait TagType {
-        const ID: u8;
-        type Schema: TList;
+pub trait SchemaType: Clone + 'static + std::fmt::Debug {
+    fn to_schema() -> Schema {
+        let mut buf = Vec::<u8>::new();
+        Self::encode_schema(&mut buf);
+        Schema(buf)
     }
-
-    pub struct Tag<const ID: u8, T: TList>([T;0]);
-    impl<const ID: u8, T: TList> TagType for Tag<ID, T> {
-        const ID: u8 = ID;
-        type Schema = T;
-    }
-
-    pub struct SchemaFieldParser<T: TList>(pub ParserBuffer, pub PhantomData<T>);
-
-    macro_rules! define_tags {
-        ($($name:ident $id:literal $([$($t:ty),*])?),*) => {
-            $( pub type $name = Tag<$id, tlist!($($($t),*)?)>; )*
-
-            #[repr(u8)]
-            pub enum SchemaTagParser {
-                $($name$((SchemaFieldParser<tlist!($($t),*)>))? = $id),*
-            }
-        };
-    }
-
-    define_tags!(
-        UNIT 0,
-        U8 1,
-        U16 2,
-        U32 3,
-        U64 4,
-        U128 5,
-        BOOL 6,
-        STRING 7,
-        BUFFER 8,
-        BUF32 9,
-        OPTION 10 [Schema],
-        LIST 11 [Schema],
-        TUPLE 12 [Vec<Schema>],
-        RSTRUCT 14 [u16, Vec<Schema>],
-        NATIVE 15,
-        REF 16,
-        FUNCTION 17
-    );
+    fn encode_schema(out: &mut Vec<u8>);
 }
+
+
+macro_rules! schematype {
+    ($([$($param:ident),*])?, $type:tt, $val:ty) => {
+        impl$(<$($param: SchemaType),*>)? SchemaType for $type$(<$($param),*>)? {
+            fn encode_schema(out: &mut Vec<u8>) {
+                out.push(<$val>::ID);
+                $($($param::encode_schema(out);)*)?
+            }
+        }
+    };
+}
+
+schematype!(, (), tag::UNIT);
+schematype!(, u8, tag::U8);
+schematype!(, u16, tag::U16);
+schematype!(, u32, tag::U32);
+schematype!(, u64, tag::U64);
+schematype!(, u128, tag::U128);
+schematype!(, bool, tag::BOOL);
+schematype!(, String, tag::STRING);
+schematype!(, Buffer, tag::BUFFER);
+schematype!(, [u8; 32], tag::BUF32);
+schematype!(, Pubkey, tag::BUF32);
+schematype!([T], Option, tag::OPTION);
+schematype!([T], Vec,    tag::LIST);
+
+
+pub trait TupleType: SchemaType {}
+
+macro_rules! tuple_types {
+    ($a:ident) => {};
+    ($a:ident, $($t:ident),+) => {
+        tuple_types!($($t),+);
+        impl<$a: SchemaType, $($t: SchemaType),+> SchemaType for ($a, $($t),+) {
+            fn encode_schema(out: &mut Vec<u8>) {
+                out.push(tag::TUPLE::ID);
+                let n = 1 $(+ ([] as [$t;0], 1).1)+;
+                let mut v = vec![];
+                $a::encode_schema(&mut v);
+                $($t::encode_schema(&mut v));+;
+                out.push(n as u8);
+                out.extend((v.len() as u16).to_le_bytes());
+                out.extend(v);
+            }
+        }
+        impl<$a: SchemaType, $($t: SchemaType),+> TupleType for ($a, $($t),+) {}
+    };
+}
+tuple_types!(A, B, C, D, E, F, G);
+
+
+
 
 
 

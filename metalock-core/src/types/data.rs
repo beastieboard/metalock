@@ -1,11 +1,19 @@
 use std::{marker::PhantomData, ops::Deref};
 
-#[cfg(feature = "anchor")]
-use anchor_lang::prelude::Pubkey;
 
-use crate::{schema::tag::*, macros::impl_into, types::{Buffer, EncodedFunction, Native}};
+use solana_program::pubkey::Pubkey;
+
+use super::core::*;
+use super::tags::*;
+use super::tags::tag::*;
+use super::schema::*;
+use super::macros::*;
 
 
+
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Native(pub Schema, pub *const u8);
 
 
 
@@ -50,6 +58,10 @@ impl<T: PartialEq> PartialEq for OptPackedPtr<T> {
     fn eq(&self, other: &Self) -> bool { self.as_ref() == other.as_ref() }
 }
 impl<T: Eq> Eq for OptPackedPtr<T> {}
+
+
+pub type ResourceData = RD;
+
 
 
 
@@ -112,7 +124,6 @@ impl_into_rd3!(IntoRd128, [], RD, u128,    |self| pp(U128::ID, 0, self));
 impl_into_rd3!(IntoRdString, [], RD, String,  |self| pp(STRING::ID, 0, self));
 impl_into_rd3!(IntoRdString, [], RD, &str,  |self| pp(STRING::ID, 0, self.to_string()));
 
-#[cfg(feature = "anchor")]
 impl_into_rd3!(IntoRdPubkey, [], RD, Pubkey,  |self| pp(BUF32::ID, 0, self));
 
 impl_into_rd3!(IntoRdBuf32, [], RD, [u8; 32], |self| pp(BUF32::ID, 0, self));

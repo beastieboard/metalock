@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Debug, hash::{DefaultHasher, Hasher}, usize};
 
-use metalock_types::*;
-use metalock_vm::{eval::{Evaluator, EvaluatorContext}, expr::*};
+use metalock_core::internal::*;
+use metalock_core::vm::{eval::{Evaluator, EvaluatorContext}, expr::*};
 
 
 impl<R: Debug, O: ?Sized + Op<R>> OpEval<R> for O {}
@@ -19,7 +19,6 @@ pub trait OpEval<R: Debug>: Op<R> {
 }
 
 
-const FETCH: u8 = 0x03;
 
 pub trait OpTreeImpl {
     fn as_mut_op_tree(&mut self) -> &mut OpTree;
@@ -34,9 +33,7 @@ pub trait OpTreeImpl {
     }
 }
 impl OpTreeImpl for OpTree {
-    fn as_mut_op_tree(&mut self) -> &mut OpTree {
-        self
-    }
+    fn as_mut_op_tree(&mut self) -> &mut OpTree { self }
 }
 
 struct OpTreeDedup {
@@ -68,7 +65,7 @@ impl OpTreeDedup {
                 if opcode.is_some() {
                     if let Some((r_hash, r_off)) = replace {
                         if r_hash == h && r_off < off {
-                            let mut v = vec![FETCH];
+                            let mut v = vec![OP::FETCH().into()];
                             v.extend(r_off.rd_encode());
                             *op = OpTree::Data(v.clone());
                             return v;

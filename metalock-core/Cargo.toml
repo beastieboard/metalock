@@ -1,13 +1,17 @@
 [package]
-name = "metalock-types"
+name = "metalock-core"
 version = "0.1.0"
 edition = "2021"
 
 [features]
 anchor = ["dep:anchor-lang"]
+measure-cu = []
 
 [dependencies]
 anchor-lang = { optional = true, path = "../../anchor/lang" }
+solana-program = "1.17.3"
+paste = "1.0.15"
+dyn-clone = "1.0.17"
 
 
 [dev-dependencies]

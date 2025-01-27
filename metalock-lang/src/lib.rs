@@ -1,9 +1,8 @@
 
 pub mod prelude;
-mod api;
+pub mod api;
 pub mod profile;
 pub mod program;
+pub mod frontend;
 mod compile;
-
-#[cfg(feature = "anchor")]
-mod frontend;
+mod native;

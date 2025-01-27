@@ -1,15 +1,13 @@
 
-//pub use crate::api::*;
-//
-//pub use crate::types::Buffer;
-//pub use crate::schema::*;
-//pub use crate::eval::{Evaluator, EvaluatorContext};
-//pub use crate::profile::profile_dump;
-//pub use crate::program::*;
-
-#[cfg(feature = "anchor")]
+pub use crate::api::*;
+pub use crate::profile::profile_dump;
+pub use crate::program::*;
 pub use crate::frontend::*;
-#[cfg(feature = "anchor")]
-pub use crate::types::anchor::*;
-#[cfg(feature = "anchor")]
-pub use anchor_lang::prelude::{Pubkey, AccountMeta};
+pub use crate::compile::OpTreeImpl;
+
+pub use metalock_core::internal::*;
+pub use metalock_core::vm::eval::{Evaluator, EvaluatorContext};
+pub use metalock_core::vm::expr::{RR, Function};
+
+pub use solana_program::pubkey::Pubkey;
+pub use solana_program::instruction::AccountMeta;

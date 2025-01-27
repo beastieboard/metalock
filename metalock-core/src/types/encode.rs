@@ -1,5 +1,6 @@
 
-use crate::{data::RD, types::*};
+use super::core::*;
+use super::data::*;
 
 
 pub trait Encode: Sized {

@@ -1,9 +1,9 @@
 use std::{marker::PhantomData, usize};
 
 
-use metalock_types::*;
-use metalock_vm::eval::*;
-use metalock_vm::expr::*;
+use metalock_core::internal::*;
+use metalock_core::vm::eval::*;
+use metalock_core::vm::expr::*;
 
 use crate::compile::*;
 

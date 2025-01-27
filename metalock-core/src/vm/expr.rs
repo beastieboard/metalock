@@ -4,13 +4,14 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::usize;
 
-use crate::eval::Evaluator;
-use crate::eval::EvaluatorContext;
-use metalock_types::*;
-use metalock_types::tlist::*;
-
-#[cfg(feature = "anchor")]
-use crate::types::anchor::*;
+use crate::types::core::*;
+use crate::types::tags::*;
+use crate::types::tlist::*;
+use crate::types::decode::*;
+use crate::types::encode::*;
+use crate::types::schema::*;
+use crate::types::data::*;
+use crate::{impl_into, impl_deref, each_field};
 
 use dyn_clone::{clone_trait_object, DynClone};
 
@@ -18,7 +19,7 @@ use dyn_clone::{clone_trait_object, DynClone};
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[allow(non_camel_case_types)]
-pub(crate) enum OP {
+pub enum OP {
     NEVER(()) = 0x00,
     CALL(CallParser) = 0x02,
     FETCH() = 0x03,
@@ -117,18 +118,7 @@ impl<R: Encode> OpEncode for R {
 
 
 clone_trait_object!(<R> Op<R>);
-pub trait Op<R: std::fmt::Debug>: DynClone + OpEncode + std::fmt::Debug {
-    //fn eval(&mut self) -> RD {
-    //    self.eval_with_context(Default::default(), usize::MAX)
-    //}
-    //fn encode(&mut self) -> Vec<u8> {
-    //    self.op_encode(&mut EncodeContext::new()).join()
-    //}
-    //fn eval_with_context(&mut self, ctx: EvaluatorContext, dedupe_threshold: usize) -> RD {
-    //    let o = self.op_encode(&mut EncodeContext::new()).join_threshold(dedupe_threshold);
-    //    Evaluator::new(&mut o.as_ref(), ctx).run(RD::Unit())
-    //}
-}
+pub trait Op<R: std::fmt::Debug>: DynClone + OpEncode + std::fmt::Debug {}
 
 
 /*
@@ -200,7 +190,7 @@ pub(crate) trait HasParser {
 
 
 macro_rules! parser_type {
-    ((RR<Function<$($t:tt)*)) => { RR<Function<(), ()>> };
+    ((RR<Function<$($t:tt)*)) => { RR<EncodedFunction> };
     ((RR $($t:tt)*)) => { RR<()> };
     ((Skippable)) => { Skippable };
     ((VarId $($t:tt)*)) => { VarId<()> };
@@ -272,7 +262,7 @@ macro_rules! opcode {
 }
 
 impl<I: SchemaType, O: SchemaType> SchemaType for Function<I, O> {
-    type Items = ();
+    //type Items = ();
     fn encode_schema(out: &mut Vec<u8>) {
         out.push(tag::FUNCTION::ID);
         I::encode_schema(out);
@@ -317,7 +307,7 @@ impl<A: SchemaType + Into<RD>> From<A> for Val<A> {
 
 opcode!(#IF, O, If<O: Clone>((RR<bool>), (RR<O>) [Skippable], (RR<O>) [Skippable]));
 #[cfg(feature = "anchor")]
-opcode!(#INVOKE_SIGNED, (), InvokeSigned<>(RR<MetalockProxyCall>));
+opcode!(#INVOKE_SIGNED, (), InvokeSigned<>((RR<MetalockProxyCall>)));
 opcode!(#GET_INVOKE_RETURN, Buffer, GetInvokeReturn<>());
 
 

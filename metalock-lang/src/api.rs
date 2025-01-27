@@ -1,8 +1,8 @@
 
-use std::{fmt::Debug, marker::PhantomData};
+use std::marker::PhantomData;
 
-use metalock_vm::expr::*;
-use metalock_types::*;
+use metalock_core::vm::expr::*;
+use metalock_core::internal::*;
 
 
 pub fn rr<R: SchemaType, O: Op<R> + 'static>(op: O) -> RR<R> {
@@ -84,7 +84,7 @@ rr_impl!(ToRRIter<I: SchemaType, It: IntoIterator<Item=I>; SchemaType> for ToRR<
 
 
 rr_impl!(ToRRHasLen<I: HasLen; SchemaType> for ToRR<I> {
-    fn len(self) -> RR<u16> {
+    fn length(self) -> RR<u16> {
         rr(Length(self.rr()))
     }
 });
@@ -186,15 +186,15 @@ mod tests {
     }
 
     #[test]
-    fn test_len() {
-        let mut comp = RR::val(vec![false, false]).len();
+    fn test_length() {
+        let mut comp = RR::val(vec![false, false]).length();
         assert!(comp.eval() == 2u16.into());
     }
 
     #[test]
     fn test_map() {
         let v = vec!["hi".to_string(), "there".to_string()];
-        let mut comp = Val::from(v).map(|s| s.len());
+        let mut comp = Val::from(v).map(|s| s.length());
         assert!(comp.eval() == vec![2u16, 5].into());
         // Test that works after map too
         assert!(comp.any(|v| v.equals(5u16)).eval() == true.into());

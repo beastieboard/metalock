@@ -29,6 +29,7 @@ macro_rules! impl_deref {
         }
     };
 }
+pub(crate) use impl_deref;
 
 
 #[macro_export]
@@ -55,14 +56,16 @@ pub use each_field;
 
 #[macro_export]
 macro_rules! anchor_derive {
-    (#[derive($($trait:ident),*)] $item:item) => {
-        #[cfg(feature = "anchor")]
-        #[derive($($trait,)* AnchorSerialize, AnchorDeserialize)]
-        $item
+    ($(#[derive($($trait:ident),*)] $item:item)*) => {
+        $(
+            #[cfg(feature = "anchor")]
+            #[derive($($trait,)* AnchorSerialize, AnchorDeserialize)]
+            $item
 
-        #[cfg(not(feature = "anchor"))]
-        #[derive($($trait),*)]
-        $item
+            #[cfg(not(feature = "anchor"))]
+            #[derive($($trait),*)]
+            $item
+        )*
     };
 }
 pub(crate) use anchor_derive;

@@ -1,47 +1,6 @@
+use super::macros::impl_deref;
 
-#[cfg(feature = "anchor")]
-pub(crate) mod anchor;
-
-use crate::parse::R;
-use crate::{impl_deref, anchor_derive};
-
-
-pub type Buf<'a, 'b> = &'a mut &'b [u8];
-
-
-
-anchor_derive!(
-    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct Schema(pub Vec<u8>);
-);
-
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Native(pub Schema, pub *const u8);
-
-
-pub trait Decode: Sized {
-    fn rd_decode(buf: Buf) -> std::result::Result<Self, String>;
-}
-
-
-
-#[cfg(feature = "anchor")]
-use anchor_lang::prelude::*;
-
-anchor_derive!(
-    #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord, Default)]
-    pub struct Buffer(pub Vec<u8>);
-);
-impl_deref!([], Buffer => Vec<u8>, 0);
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct EncodedFunction(pub u16, pub Vec<u8>);
-impl_deref!([], EncodedFunction => Vec<u8>, 1);
-
-
-
-
+use super::decode::{Decode, R};
 
 
 

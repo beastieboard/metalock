@@ -6,13 +6,16 @@ use anchor_lang::solana_program::compute_units::sol_remaining_compute_units;
 
 #[cfg(feature = "anchor")]
 use anchor_lang::{prelude::*, solana_program as sp};
-#[cfg(feature = "anchor")]
-use crate::types::anchor::*;
 
-use metalock_types::*;
-use metalock_types::tlist::*;
-use crate::native::*;
-use crate::expr::*;
+use crate::types::tlist::*;
+use crate::types::core::*;
+use crate::types::decode::*;
+use crate::types::data::*;
+use crate::types::newval::*;
+use crate::types::parse::*;
+use super::expr::*;
+
+pub use super::expr::Function;
 
 
 
@@ -328,7 +331,7 @@ impl Evaluator {
         out
     }
 
-    fn fn_map(&mut self, p: impl HasParser<R=tlist!(RR<()>, RR<Function<(), ()>>)>) -> Vec<RD> {
+    fn fn_map(&mut self, p: impl HasParser<R=tlist!(RR<()>, RR<EncodedFunction>)>) -> Vec<RD> {
         fn_map!(|self, p, f, val| {
             match val {
                 RD::List(vec) => vec.iter().map(f).collect(),
@@ -351,7 +354,7 @@ impl Evaluator {
     }
 
 
-    pub fn print_profile_info(&self, n: usize) {
+    pub fn print_profile_info(&self, _n: usize) {
         #[cfg(feature = "measure-cu")]
         {
             let mut vals: Vec<(OP, u64)> = self.profile.2.clone().into_iter().collect();
@@ -424,6 +427,6 @@ parser_taker!(<> (Skippable, RR<()>), eval, RD, |self| {
     self.0.buf.skip_bytes(2);
     self.0.eval()
 });
-parser_taker!(<> (RR<Function<(), ()>>), take_fun1, &'static EncodedFunction, |self| {
+parser_taker!(<> (RR<EncodedFunction>), take_fun1, &'static EncodedFunction, |self| {
     self.0.eval()._as()
 });

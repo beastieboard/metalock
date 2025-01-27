@@ -8,15 +8,14 @@ metalock-profile = []
 no-profile = []
 measure-cu = []
 profile = []
-anchor = ["dep:anchor-lang"]
+anchor = ["metalock-core/anchor", "dep:anchor-lang"]
 
 [dependencies]
 paste = "1.0.15"
-solana-program = "2.1.9"
+solana-program = "1.17.3"
 anchor-lang = { optional = true, path = "../../anchor/lang" }
 dyn-clone = "1.0.17"
-metalock-vm = { path = "../metalock-vm" }
-metalock-types = { path = "../metalock-types" }
+metalock-core = { path = "../metalock-core" }
 
 
 

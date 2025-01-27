@@ -1,36 +1,41 @@
 
 use std::marker::PhantomData;
 
-use anchor_lang::prelude::*;
-
-use crate::{eval::{Evaluator, EvaluatorContext}, expr::Function, newval::{schema_is_superset, SchemaParser, SchemaType}, program::Program, schema::*, types::*};
-
-use crate::encode::Encode;
+use metalock_core::internal::*;
+use metalock_core::vm::eval::*;
+use metalock_core::{anchor_derive, impl_into, impl_deref};
 
 
-#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
-pub struct MetalockTest {
-    hooks: MetalockHooks,
-    //resources: MetalockResources
-}
 
-impl HasMetalock for MetalockTest {
-    fn get_hooks(&self) -> &MetalockHooks { &self.hooks }
-    fn get_hooks_mut(&mut self) -> &mut MetalockHooks { &mut self.hooks }
-    //fn get_resources(&self) -> &MetalockResources { &self.resources }
-    //fn get_resources_mut(&mut self) -> &mut MetalockResources { &mut self.resources }
-}
 
-#[derive(Clone, AnchorSerialize, AnchorDeserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub struct MetalockHook {
-    schema: Schema,
-    name: String,
-    code: Vec<u8>
-}
+anchor_derive!(
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct ResourceId(pub Schema, pub String);
 
-#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
-pub struct MetalockHooks(Vec<MetalockHook>);
-impl_deref!([], MetalockHooks, Vec<MetalockHook>, 0);
+    #[derive(Clone, PartialEq, Eq)]
+    pub enum ResourceDataOrPtr {
+        Data(Vec<u8>),
+        Ptr(ResourceId)
+    }
+
+    #[derive(Clone)]
+    pub struct MetalockTest {
+        hooks: MetalockHooks,
+        //resources: MetalockResources
+    }
+
+    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct MetalockHook {
+        schema: Schema,
+        name: String,
+        code: Vec<u8>
+    }
+
+    #[derive(Clone)]
+    pub struct MetalockHooks(Vec<MetalockHook>);
+);
+
+impl_deref!([], MetalockHooks => Vec<MetalockHook>, 0);
 pub type MetalockResources = Vec<(Schema, Vec<(String, ResourceDataOrPtr)>)>;
 
 pub trait HasMetalock {
@@ -40,6 +45,12 @@ pub trait HasMetalock {
     //fn get_resources_mut(&mut self) -> &mut MetalockResources;
 }
 
+impl HasMetalock for MetalockTest {
+    fn get_hooks(&self) -> &MetalockHooks { &self.hooks }
+    fn get_hooks_mut(&mut self) -> &mut MetalockHooks { &mut self.hooks }
+    //fn get_resources(&self) -> &MetalockResources { &self.resources }
+    //fn get_resources_mut(&mut self) -> &mut MetalockResources { &mut self.resources }
+}
 pub struct Metalock<'a, S: HasMetalock>(pub &'a mut S);
 
 //impl<'a, S: HasMetalock> Metalock<'a, S> {
@@ -136,16 +147,6 @@ pub struct Metalock<'a, S: HasMetalock>(pub &'a mut S);
 //}
 
 
-
-#[derive(Clone, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
-pub struct ResourceId(pub Schema, pub String);
-
-#[derive(Clone, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
-pub enum ResourceDataOrPtr {
-    Data(Vec<u8>),
-    Ptr(ResourceId)
-}
-
 impl_into!([], ResourceDataOrPtr, ResourceData, |self| ResourceDataOrPtr::Data(self.rd_encode()));
 impl_into!([], ResourceDataOrPtr, ResourceId, |self| ResourceDataOrPtr::Ptr(self));
 
@@ -159,14 +160,12 @@ enum SetResult {
 
 
 
-use crate::schema::tag::{self, TagType};
-
 /*
  * Hooks
  */
 
 impl<'a, S: HasMetalock> Metalock<'a, S> {
-    pub fn add_hook(&mut self, name: String, bin: Vec<u8>) -> Result<()> {
+    pub fn add_hook(&mut self, name: String, bin: Vec<u8>) -> Result<(), String> {
 
         // take schema from bin
         let parser = ParserBuffer::new(&bin);

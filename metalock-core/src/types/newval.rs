@@ -1,108 +1,9 @@
 
-use std::ops::Deref;
-
-#[cfg(feature = "anchor")]
-use anchor_lang::prelude::{AccountMeta, Pubkey, msg};
-
-#[cfg(feature = "anchor")]
-use crate::types::anchor::*;
-
-use crate::{data::RD, parse::{rdd, R}, schema::tag::{self, TagType}, types::{Buffer, Decode, EncodedFunction, Parser, ParserBuffer, Schema}};
-use crate::{impl_deref, impl_into};
-use crate::tlist::*;
-
-/*
- * Schema Type
- */
-
-pub trait SchemaType: Clone + 'static + std::fmt::Debug {
-    type Items: TList;
-    fn to_schema() -> Schema {
-        let mut buf = Vec::<u8>::new();
-        Self::encode_schema(&mut buf);
-        Schema(buf)
-    }
-    fn encode_schema(out: &mut Vec<u8>);
-}
-
-macro_rules! schema_primitive {
-    ($type:ty, $val:ty) => {
-        schema_primitive!($type, $val, |out| {});
-    };
-    ($type:ty, $val:ty, |$out:ident| $encode:expr) => {
-        impl SchemaType for $type {
-            type Items = TCons<$val, ()>;
-            fn encode_schema($out: &mut Vec<u8>) {
-                $out.push(<$val>::ID);
-                $encode;
-            }
-        }
-    };
-}
-
-schema_primitive!((), tag::UNIT);
-schema_primitive!(u8, tag::U8);
-schema_primitive!(u16, tag::U16);
-schema_primitive!(u32, tag::U32);
-schema_primitive!(u64, tag::U64);
-schema_primitive!(u128, tag::U128);
-schema_primitive!(bool, tag::BOOL);
-schema_primitive!(String, tag::STRING);
-schema_primitive!(Buffer, tag::BUFFER);
-schema_primitive!([u8; 32], tag::BUF32);
-#[cfg(feature = "anchor")]
-schema_primitive!(Pubkey, tag::BUF32);
+use super::{data::*, decode::*, parse::*, core::*, tags::*, schema::*};
+use super::macros::{impl_deref, impl_into};
 
 
-macro_rules! schema_complex {
-    ([$($param:ident),*], $type:tt, $val:ty) => {
-        impl<$($param: SchemaType),*> SchemaType for $type<$($param),*> {
-            type Items = tlist!($val, Vec<()>); // TODO: Type for tuple items?
-            fn encode_schema(out: &mut Vec<u8>) {
-                out.push(<$val>::ID);
-                $($param::encode_schema(out);)*
-            }
-        }
-    };
-}
 
-schema_complex!([T], Option, tag::OPTION);
-schema_complex!([T], Vec,    tag::LIST);
-//schema_complex!([I, O], Function, tag::FUNCTION);
-
-#[macro_export]                                   
-macro_rules! count {                              
-    () => (0);                                    
-    ( $x:tt $($xs:tt)* ) => (1 + count!($($xs)*));
-}
-
-pub trait TupleType: SchemaType {}
-
-macro_rules! tuple_types {
-    ($a:ident) => {};
-    ($a:ident, $($t:ident),+) => {
-        tuple_types!($($t),+);
-        impl<$a: SchemaType, $($t: SchemaType),+> SchemaType for ($a, $($t),+) {
-            type Items = tlist!(tag::TUPLE, u8, u16); // TODO
-            fn encode_schema(out: &mut Vec<u8>) {
-                out.push(tag::TUPLE::ID);
-                let n = 1 $(+ ([] as [$t;0], 1).1)+;
-                let mut v = vec![];
-                $a::encode_schema(&mut v);
-                $($t::encode_schema(&mut v));+;
-                out.push(n as u8);
-                out.extend((v.len() as u16).to_le_bytes());
-                out.extend(v);
-            }
-        }
-        impl<$a: SchemaType, $($t: SchemaType),+> TupleType for ($a, $($t),+) {}
-    };
-}
-tuple_types!(A, B, C, D, E, F, G);
-
-/*
- * Parsing
- */
 
 
 pub fn data_parse(buf: Parser) -> R<RD> {
@@ -119,11 +20,9 @@ pub fn data_parse(buf: Parser) -> R<RD> {
             tag::BOOL::ID => RD::Bool(rdd(data)?),
             tag::STRING::ID => rdd::<String>(data)?.into(),
             tag::BUFFER::ID => rdd::<Buffer>(data)?.into(),
-            // TODO: Zero copy?
             tag::BUF32::ID => {
                 let p = (&data.take::<32>()?) as *const [u8; 32];
                 p.into()
-                //data.take::<32>()?.into(),
             },
             tag::OPTION::ID => {
                 if bool::rd_decode(data)? {

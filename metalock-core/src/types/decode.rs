@@ -1,16 +1,22 @@
 
-use std::marker::PhantomData;
-
 #[cfg(feature = "anchor")]
 use anchor_lang::prelude::*;
-#[cfg(feature = "anchor")]
-use crate::types::anchor::*;
 
-use crate::types::*;
+use solana_program::pubkey::Pubkey;
+
+use super::core::{Buffer, EncodedFunction};
 
 
 
-pub type R<T> = std::result::Result<T, String>;
+pub type Buf<'a, 'b> = &'a mut &'b [u8];
+
+
+pub trait Decode: Sized {
+    fn rd_decode(buf: Buf) -> std::result::Result<Self, String>;
+}
+
+
+pub(crate) type R<T> = std::result::Result<T, String>;
 
 
 
@@ -55,7 +61,6 @@ impl_deserialize_int!(u64);
 impl_deserialize_int!(u128);
 impl_deserialize_any!((), |_buf| Ok(()));
 impl_deserialize_any!(bool, |buf| Ok(u8::rd_decode(buf)? > 0));
-#[cfg(feature = "anchor")]
 impl_deserialize_any!(Pubkey, |buf| Ok(Pubkey::from(take(buf)?)));
 impl_deserialize_any!(Option<T>, |buf| Option::rd_many(buf, rdd));
 impl_deserialize_any!(Vec<T>, |buf| Vec::rd_many(buf, rdd));
@@ -64,27 +69,6 @@ impl_deserialize_any!(String, |buf| {
     let Buffer(v) = Buffer::rd_decode(buf)?;
     Ok(unsafe { String::from_utf8_unchecked(v) })
 });
-#[cfg(feature = "anchor")]
-impl_deserialize_any!(AccountMeta, |buf| {
-    let pubkey: Pubkey = rdd(buf)?;
-    let flags: u8 = rdd(buf)?;
-    Ok(AccountMeta {
-        pubkey,
-        is_signer: flags & 2 > 0,
-        is_writable: flags & 1 > 0,
-    })
-});
-#[cfg(feature = "anchor")]
-impl_deserialize_any!(MetalockProxyCall, |buf| {
-    Ok(MetalockProxyCall {
-        program_id: rdd(buf)?,
-        data: rdd(buf)?,
-        accounts: rdd(buf)?
-    })
-});
-//impl_deserialize_any!(VarId<I>, |buf| {
-//    Ok(VarId::from(u16::rd_decode(buf)?))
-//});
 
 impl_deserialize_any!(Buffer, |buf| {
     let len: u16 = rdd(buf)?;
