@@ -7,13 +7,14 @@ Metalock is a barebones language designed to be called inside a Solana program.
 
 The use case for Metalock is when you have a smart contract system and you
 want to support custom user logic; the overhead for allowing each user to 
-specify their own 3rd party contract and call that contract is "too damned high";
-the CPI is likely to cost 5000+ CU, as well as require additional annoying
-logic to specify their 3rd party program and accounts when creating the TX.
+specify their own 3rd party contract and call that contract is potentially too high,
+the CPI is likely to cost 5000+ CU, it will require additional complexity to specify 
+their 3rd party program and accounts, and the transaction size of 1232 bytes is already
+easy to reach.
 
-However, a Metalock program which compiles into a few hundred bytes can be easily
+However, a Metalock program which compiles into a few dozen or hundred bytes can be easily
 be stored inside a user account (which is loaded anyway), and execution costs
-can be relatively low.
+are relatively low for simple logic.
 
 ## Creating a Program
 
@@ -42,9 +43,9 @@ To run the program:
 
 ```rust
 let mut eval = Evaluator::new(&mut code.as_ref(), Default::default());
-let r = eval.run(1u32.into())._as::<bool>();
 
-// r is true
+// evaluates to true
+eval.run(1u32.into())._as::<bool>()
 ```
 
 ## Execution model
@@ -66,3 +67,22 @@ The program not_10 compiles into the bytecode:
 ```
 
 For a total of 13 bytes (could be further reduced).
+
+## Language API
+
+### Math
+
+```
+// Add 2 integers
+RR<I: std::ops::Add>::add(other: RR<I>) -> RR<I>
+```
+
+### Vector
+
+```
+// Lookup an item in a vec
+RR<Vec<I>>.get(i: RR<u16>)
+
+// Check that all items satisfy a property
+RR<Vec<I>>.all(f: impl Fn(RR<I>) -> RR<bool>)
+```
