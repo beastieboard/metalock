@@ -62,11 +62,11 @@ macro_rules! fn_map {
 
 #[derive(Default, Clone)]
 pub struct EvaluatorContext {
-    #[cfg(feature = "anchor")]
-    pub proxy_calls: Vec<MetalockProxyCall>,
-    #[cfg(feature = "anchor")]
-    pub remaining_accounts: &'static [AccountInfo<'static>],
-    pub beastie_seeds: Vec<&'static [u8]>
+    //#[cfg(feature = "anchor")]
+    //pub proxy_calls: Vec<MetalockProxyCall>,
+    //#[cfg(feature = "anchor")]
+    //pub remaining_accounts: &'static [AccountInfo<'static>],
+    //pub beastie_seeds: Vec<&'static [u8]>
 }
 
 
@@ -243,37 +243,37 @@ impl Evaluator {
             OP::FROM_SOME(p) => { orsome!(self, p, |a| a, |res| res.clone()) },
             OP::OR_SOME(p) => orsome!(self, p, |a| &a, |_res| a),
 
-            #[cfg(feature = "anchor")]
-            OP::INVOKE_SIGNED(_) => {
-                let call = match self.eval() {
-                    RD::Native(c) => {
-                        let Native(_rs, p) = &*c;
-                        unsafe { &*(*p as *const MetalockProxyCall) }
-                    },
-                    _ => panic!("INVOKE_SIGNED: expected Native")
-                };
+            //#[cfg(feature = "anchor")]
+            //OP::INVOKE_SIGNED(_) => {
+            //    let call = match self.eval() {
+            //        RD::Native(c) => {
+            //            let Native(_rs, p) = &*c;
+            //            unsafe { &*(*p as *const MetalockProxyCall) }
+            //        },
+            //        _ => panic!("INVOKE_SIGNED: expected Native")
+            //    };
 
-                // Not as much of a CU saving as you might think
-                let accounts: Vec<AccountMeta> = unsafe {
-                    let p: &[usize; 3] = std::mem::transmute(&call.accounts);
-                    std::mem::transmute(*p)
-                };
+            //    // Not as much of a CU saving as you might think
+            //    let accounts: Vec<AccountMeta> = unsafe {
+            //        let p: &[usize; 3] = std::mem::transmute(&call.accounts);
+            //        std::mem::transmute(*p)
+            //    };
 
-                //let cu = sol_remaining_typed parser that yields bcompute_units();
-                sp::program::invoke_signed_unchecked(
-                    &sp::instruction::Instruction::new_with_bytes(call.program_id, &call.data.0, accounts),
-                    self.ctx.remaining_accounts,
-                    &[&*self.ctx.beastie_seeds],
-                ).expect("INVOKE_SIGNED: call failed");
-                //msg!("console.log call used: {}", cu - sol_remaining_compute_units());
+            //    //let cu = sol_remaining_typed parser that yields bcompute_units();
+            //    sp::program::invoke_signed_unchecked(
+            //        &sp::instruction::Instruction::new_with_bytes(call.program_id, &call.data.0, accounts),
+            //        self.ctx.remaining_accounts,
+            //        &[&*self.ctx.beastie_seeds],
+            //    ).expect("INVOKE_SIGNED: call failed");
+            //    //msg!("console.log call used: {}", cu - sol_remaining_compute_units());
 
-                RD::Unit()
-            },
-            #[cfg(feature = "anchor")]
-            OP::GET_INVOKE_RETURN(_) => {
-                let (_, r) = sp::program::get_return_data().expect("Expected instruction to return data");
-                Buffer(r).into()
-            },
+            //    RD::Unit()
+            //},
+            //#[cfg(feature = "anchor")]
+            //OP::GET_INVOKE_RETURN(_) => {
+            //    let (_, r) = sp::program::get_return_data().expect("Expected instruction to return data");
+            //    Buffer(r).into()
+            //},
 
             OP::PANIC(_) => {
                 let s: &String = self.eval()._as();
@@ -378,9 +378,7 @@ impl<'a, A, T: TList> EvalParser<'a, TCons<A, T>> {
     }
 }
 macro_rules! wrap_tcons {
-    ($head:ty, $($rest:ty),*) => {
-        TCons<$head, wrap_tcons!($($rest),*)>
-    };
+    ($head:ty, $($rest:ty),*) => { TCons<$head, wrap_tcons!($($rest),*)> };
     ($head:ty) => { $head };
 }
 macro_rules! parser_taker {

@@ -59,6 +59,9 @@ macro_rules! anchor_derive {
     ($(#[derive($($trait:ident),*)] $item:item)*) => {
         $(
             #[cfg(feature = "anchor")]
+            use anchor_lang::prelude::*;
+
+            #[cfg(feature = "anchor")]
             #[derive($($trait,)* AnchorSerialize, AnchorDeserialize)]
             $item
 

@@ -159,7 +159,7 @@ rr_impl!(ToRRTup2<A: SchemaType, B: SchemaType> for ToRR<(A, B)> {
 mod tests {
 
     use super::*;
-    use crate::compile::*;
+    use crate::{compile::*, prelude::IntoProgram};
 
     #[test]
     fn test_and() {
@@ -293,6 +293,28 @@ mod tests {
     fn test_overflow() {
         let mut comp = 200u8.add(200);
         println!("r is: {:?}", comp.eval());
+    }
+
+    #[test]
+    fn test_catch_panic() {
+        /*
+         * This wont work in SVM
+         */
+        let result = std::panic::catch_unwind(|| {
+            let v: Vec<u8> = vec![];
+            v.rr().get(1).eval()
+        });
+        println!("r is: {:?}", result);
+    }
+
+    #[test]
+    fn test_catp() {
+        fn p(n: RR<u32>) -> RR<bool> {
+            n.equals(10).not()
+        }
+        let mut program = p.to_program();
+        let b = program.compile();
+        println!("{:02X?}", b);
     }
 }
 

@@ -1,4 +1,5 @@
-use std::{collections::BTreeMap, fmt::Debug, hash::{DefaultHasher, Hasher}, usize};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hasher, usize};
+use std::collections::hash_map::DefaultHasher;
 
 use metalock_core::internal::*;
 use metalock_core::vm::{eval::{Evaluator, EvaluatorContext}, expr::*};

@@ -45,9 +45,9 @@ pub enum OP {
     SETVAR(SetVarParser) = 0x61,
     ADD(AddParser) = 0x70,
     IF(IfParser) = 0x80,
-    #[cfg(feature = "anchor")]
-    INVOKE_SIGNED(InvokeSignedParser) = 0xB1,
-    GET_INVOKE_RETURN(GetInvokeReturnParser) = 0xBA,
+    //#[cfg(feature = "anchor")]
+    //INVOKE_SIGNED(InvokeSignedParser) = 0xB1,
+    //GET_INVOKE_RETURN(GetInvokeReturnParser) = 0xBA,
     PANIC(PanicParser) = 0xc0,
     ASSERT(AssertParser) = 0xc1,
 }
@@ -306,9 +306,9 @@ impl<A: SchemaType + Into<RD>> From<A> for Val<A> {
 
 
 opcode!(#IF, O, If<O: Clone>((RR<bool>), (RR<O>) [Skippable], (RR<O>) [Skippable]));
-#[cfg(feature = "anchor")]
-opcode!(#INVOKE_SIGNED, (), InvokeSigned<>((RR<MetalockProxyCall>)));
-opcode!(#GET_INVOKE_RETURN, Buffer, GetInvokeReturn<>());
+//#[cfg(feature = "anchor")]
+//opcode!(#INVOKE_SIGNED, (), InvokeSigned<>((RR<MetalockProxyCall>)));
+//opcode!(#GET_INVOKE_RETURN, Buffer, GetInvokeReturn<>());
 
 
 opcode!(#PANIC, A, Panic<A>(String, (PhantomData<A>)));

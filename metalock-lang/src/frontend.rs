@@ -165,7 +165,7 @@ enum SetResult {
  */
 
 impl<'a, S: HasMetalock> Metalock<'a, S> {
-    pub fn add_hook(&mut self, name: String, bin: Vec<u8>) -> Result<(), String> {
+    pub fn add_hook(&mut self, name: String, bin: Vec<u8>) -> std::result::Result<(), String> {
 
         // take schema from bin
         let parser = ParserBuffer::new(&bin);
