@@ -70,6 +70,12 @@ For a total of 13 bytes (could be further reduced).
 
 ## Language API
 
+[Full API here](metalock-lang/src/api.rs); new opcodes can easily be added:
+
+* Create opcode defintion: [here](metalock-core/src/vm/expr.rs)
+* Implement evaluation: [here](metalock-core/src/vm/eval.rs)
+* Add language API [here](metalock-lang/src/api.rs)
+
 ### Math
 
 ```
