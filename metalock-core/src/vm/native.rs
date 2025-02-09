@@ -61,17 +61,18 @@ impl Native {
         }
     }
 
-    pub fn index(&self, idx: usize) -> Native {
+    pub fn index(&self, idx: usize) -> Option<Native> {
         let rstruct = self.0.parser().list();
         let size = rstruct.clone().rstruct().0;
         let v = unsafe { &*(self.1 as *const () as *const Vec<u8>)};
         if idx >= v.len() {
-            panic!("Vec idx oob");
+            None
+        } else {
+            let p = v.as_ptr();
+            let off = size * idx;
+            let p = unsafe { p.add(off) };
+            Some(Native(rstruct.into(), p))
         }
-        let p = v.as_ptr();
-        let off = size * idx;
-        let p = unsafe { p.add(off) };
-        Native(rstruct.into(), p)
     }
 
     pub fn iter(&self) -> impl Iterator<Item=RD> + '_ {

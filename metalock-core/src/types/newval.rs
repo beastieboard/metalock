@@ -1,9 +1,15 @@
 
-use super::{data::*, decode::*, parse::*, core::*, tags::*, schema::*};
+use super::encode::Encode;
+use super::{data::*, decode::*, parse::*, core::*, tags::*};
 use super::macros::{impl_deref, impl_into};
 
 
 
+impl Decode for RD {
+    fn rd_decode(buf: Buf) -> R<RD> {
+        data_parse(&mut ParserBuffer::new(buf))
+    }
+}
 
 
 pub fn data_parse(buf: Parser) -> R<RD> {
@@ -152,6 +158,7 @@ impl Schema {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::schema::*;
 
     #[test]
     fn test_simple() {

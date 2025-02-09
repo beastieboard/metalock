@@ -2,18 +2,18 @@ use std::{collections::BTreeMap, fmt::Debug, hash::Hasher, usize};
 use std::collections::hash_map::DefaultHasher;
 
 use metalock_core::internal::*;
-use metalock_core::vm::{eval::{Evaluator, EvaluatorContext}, expr::*};
+use metalock_core::vm::{eval::{Evaluator, EvaluatorContext, EvalResult}, expr::*};
 
 
 impl<R: Debug, O: ?Sized + Op<R>> OpEval<R> for O {}
 pub trait OpEval<R: Debug>: Op<R> {
-    fn eval(&mut self) -> RD {
+    fn eval(&mut self) -> EvalResult<RD> {
         self.eval_with_context(Default::default(), usize::MAX)
     }
     fn encode(&mut self) -> Vec<u8> {
         self.op_encode(&mut EncodeContext::new()).join()
     }
-    fn eval_with_context(&mut self, ctx: EvaluatorContext, dedupe_threshold: usize) -> RD {
+    fn eval_with_context(&mut self, ctx: EvaluatorContext, dedupe_threshold: usize) -> EvalResult<RD> {
         let o = self.op_encode(&mut EncodeContext::new()).join_threshold(dedupe_threshold);
         Evaluator::new(&mut o.as_ref(), ctx).run(RD::Unit())
     }
@@ -110,7 +110,7 @@ mod tests {
     fn test_dedup() {
         let big = "1111".to_string();
         let mut comp = big.rr().equals(big).choose(112u8, 2);
-        assert_eq!(comp.eval()._as::<u8>(), 112);
-        assert_eq!(comp.eval_with_context(Default::default(), 5)._as::<u8>(), 112);
+        assert_eq!(comp.eval().unwrap()._as::<u8>(), 112);
+        assert_eq!(comp.eval_with_context(Default::default(), 5).unwrap()._as::<u8>(), 112);
     }
 }

@@ -23,13 +23,13 @@ macro_rules! orsome {
     ($self:ident, $p:ident, |$a:ident| $ae:expr, |$res:ident| $rese:expr) => {
         {
             let p = EvalParser::from($self, $p);
-            let C($a, p) = p.eval();
+            let C($a, p) = p.eval()?;
             if let RD::Option(r) = $ae {
                 if let Some($res) = r.as_ref() {
-                    p.skip();
+                    p.skip()?;
                     $rese
                 } else {
-                    p.eval()
+                    p.eval()?
                 }
             } else {
                 panic!("expected RD::Option")
@@ -42,7 +42,7 @@ macro_rules! fn_map {
     (|$self:ident, $p:ident, $f:ident, $val:ident| $expr:expr) => {
         {
             let p = EvalParser::from($self, $p);
-            let ($val, EncodedFunction(ref_id, body)) = p.eval().take_fun1();
+            let ($val, EncodedFunction(ref_id, body)) = p.eval()?.take_fun1()?;
 
             let buf = *$self.buf;
 
@@ -60,14 +60,11 @@ macro_rules! fn_map {
 }
 
 
+pub type EvalResult<Res> = std::result::Result<Res, String>;
+
+
 #[derive(Default, Clone)]
-pub struct EvaluatorContext {
-    //#[cfg(feature = "anchor")]
-    //pub proxy_calls: Vec<MetalockProxyCall>,
-    //#[cfg(feature = "anchor")]
-    //pub remaining_accounts: &'static [AccountInfo<'static>],
-    //pub beastie_seeds: Vec<&'static [u8]>
-}
+pub struct EvaluatorContext {}
 
 
 pub struct Evaluator {
@@ -93,12 +90,12 @@ impl Evaluator {
         }
     }
 
-    pub fn run(&mut self, input: RD) -> RD {
+    pub fn run(&mut self, input: RD) -> EvalResult<RD> {
         self.vars[0] = input;
         self.eval()
     }
 
-    fn eval(&mut self) -> RD {
+    fn eval(&mut self) -> EvalResult<RD> {
         let op = self.take_op();
 
         #[cfg(feature = "measure-cu")]
@@ -118,34 +115,34 @@ impl Evaluator {
 
             OP::AND(p) => {
                 let p = EvalParser::from(self, p);
-                let C(r, p) = p.eval();
+                let C(r, p) = p.eval()?;
                 if r._as() {
-                    p.eval()
+                    p.eval()?
                 } else {
-                    p.skip();
+                    p.skip()?;
                     false.into()
                 }
             },
 
             OP::OR(p) => {
                 let p = EvalParser::from(self, p);
-                let C(r, p) = p.eval();
+                let C(r, p) = p.eval()?;
                 if r._as() {
-                    p.skip();
+                    p.skip()?;
                     r
                 } else {
-                    p.eval()
+                    p.eval()?
                 }
             },
-            OP::NOT(_) => RD::Bool(self.eval()._as::<bool>() == false),
+            OP::NOT(_) => RD::Bool(self.eval()?._as::<bool>() == false),
 
             OP::EQ(p) => {
                 let p = EvalParser::from(self, p);
-                let (a, b) = p.eval().eval();
+                let (a, b) = p.eval().unwrap().eval().unwrap();
                 (a == b).into()
             },
             OP::LEN(_) => {
-                ((match self.eval() {
+                ((match self.eval()? {
                     RD::String(s) => s.len(),
                     RD::List(s) => s.len(),
                     RD::Buffer(s) => s.len(),
@@ -153,35 +150,35 @@ impl Evaluator {
                 }) as u16).into()
             },
             OP::ADD(_) => {
-                match (self.eval(), self.eval()) {
-                    (RD::U8(a),  RD::U8(b))  => (a+b).into(),
-                    (RD::U16(a), RD::U16(b)) => (a+b).into(),
-                    (RD::U32(a), RD::U32(b)) => (a+b).into(),
-                    (RD::U64(a), RD::U64(b)) => (*a+*b).into(),
+                match (self.eval()?, self.eval()?) {
+                    (RD::U8(a),  RD::U8(b))  => a.checked_add(b).ok_or("add: overflow")?.into(),
+                    (RD::U16(a), RD::U16(b)) => a.checked_add(b).ok_or("add: overflow")?.into(),
+                    (RD::U32(a), RD::U32(b)) => a.checked_add(b).ok_or("add: overflow")?.into(),
+                    (RD::U64(a), RD::U64(b)) => a.checked_add(*b).ok_or("add: overflow")?.into(),
                     (a, b) => panic!("OP::ADD unexpected: {:?}, {:?}", a, b)
                 }
             },
 
             //
-            OP::SEQ(_) => { self.eval(); self.eval() },
+            OP::SEQ(_) => { self.eval()?; self.eval()? },
 
             //
             OP::MAP(p) => {
                 fn_map!(|self, p, f, val| {
                     match val {
-                        RD::List(v) => v.iter().map(f).collect::<Vec<_>>().into(),
-                        RD::Option(o) => o.as_ref().map(f).into(),
-                        RD::Native(c) => c.iter().map(|o| f(&o)).collect::<Vec<_>>().into(),
+                        RD::List(v) => v.iter().map(f).collect::<EvalResult<Vec<_>>>()?.into(),
+                        RD::Option(o) => o.as_ref().map(f).transpose()?.into(),
+                        RD::Native(c) => c.iter().map(|o| f(&o)).collect::<EvalResult<Vec<_>>>()?.into(),
                         _ => panic!("OP::MAP: unexpected")
                     }
                 })
             },
-            OP::ALL(p) => self.fn_map(p).into_iter().all(|rd| rd == RD::Bool(true)).into(),
-            OP::ANY(p) => self.fn_map(p).iter().any(|rd| rd == &RD::Bool(true)).into(),
-            OP::EACH(p) => { self.fn_map(p); RD::Unit() },
+            OP::ALL(p) => self.fn_map(p)?.into_iter().all(|rd| rd == RD::Bool(true)).into(),
+            OP::ANY(p) => self.fn_map(p)?.iter().any(|rd| rd == &RD::Bool(true)).into(),
+            OP::EACH(p) => { self.fn_map(p)?; RD::Unit() },
             OP::SLICE(_) => {
-                let o = self.eval();
-                let idx = self.eval()._as::<u16>() as usize;
+                let o = self.eval()?;
+                let idx = self.eval()?._as::<u16>() as usize;
                 match o {
                     RD::List(vec) => vec[idx..].to_vec().into(),
                     RD::Native(c) => c.slice(idx).into(),
@@ -190,56 +187,56 @@ impl Evaluator {
             },
             OP::INDEX(p) => {
                 let p = EvalParser::from(self, p);
-                let C(rd, p) = p.eval();
-                let idx = p.eval_as::<u16>() as usize;
+                let C(rd, p) = p.eval()?;
+                let idx = p.eval_as::<u16>()? as usize;
 
                 match rd {
-                    RD::List(vec) => vec[idx].clone(),
-                    RD::Tuple(vec) => vec[idx].clone(),
+                    RD::List(vec) => vec.get(idx).map(Clone::clone).into(),
+                    RD::Tuple(vec) => vec.get(idx).map(Clone::clone).into(),
                     RD::Native(p) => (*p).index(idx).into(),
                     _ => panic!("INDEX: Expecting RD::[List,Tuple,Native], got: {:?}", rd)
                 }
             },
 
             //
-            OP::VAL(p) => {
+            OP::VAL(_) => {
                 data_parse(&mut self.buf).expect("failed reading data")
             },
             OP::VAR(p) => {
-                let var_id = EvalParser::from(self, p).take();
+                let var_id = EvalParser::from(self, p).take()?;
                 self.vars[*var_id as usize].clone()
             },
             OP::SETVAR(p) => {
                 let p = EvalParser::from(self, p);
-                let (ref_id, r) = p.take().eval();
+                let (ref_id, r) = p.take()?.eval()?;
                 self.vars[*ref_id as usize] = r;
                 RD::Unit()
             },
 
             OP::GET_STRUCT_FIELD(p) => {
                 let p = EvalParser::from(self, p);
-                let ((c, field), off) = p.eval_as::<&'static Native>().take().take();
+                let ((c, field), off) = p.eval_as::<&'static Native>()?.take()?.take()?;
                 c.get_struct_field(field, off)
             },
 
             OP::SET_STRUCT_FIELD(p) => {
                 let p = EvalParser::from(self, p);
-                let (((c, _), off), val) = p.eval_as::<&'static Native>().take().take().eval();
+                let (((c, _), off), val) = p.eval_as::<&'static Native>()?.take()?.take()?.eval()?;
                 c.set_struct_field(off, val).into()
             },
 
             OP::IF(p) => {
                 let p = EvalParser::from(self, p);
-                let C(e, p) = p.eval();
+                let C(e, p) = p.eval()?;
 
                 if e._as() {
-                    p.eval().skip().0
+                    p.eval()?.skip()?.0
                 } else {
-                    p.skip().eval().1
+                    p.skip()?.eval()?.1
                 }
             },
 
-            OP::TO_SOME(_) => { Some(self.eval()).into() },
+            OP::TO_SOME(_) => { Some(self.eval()?).into() },
             OP::FROM_SOME(p) => { orsome!(self, p, |a| a, |res| res.clone()) },
             OP::OR_SOME(p) => orsome!(self, p, |a| &a, |_res| a),
 
@@ -275,17 +272,18 @@ impl Evaluator {
             //    Buffer(r).into()
             //},
 
-            OP::PANIC(_) => {
-                let s: &String = self.eval()._as();
-                panic!("{}", s);
+            OP::PANIC(p) => {
+                let p = EvalParser::from(self, p);
+                let s = p.take()?;
+                return Err(s);
             },
             OP::ASSERT(_) => {
-                let pass = self.eval() == true.into();
+                let pass = self.eval()? == true.into();
                 let len = self.buf.decode();
                 if pass {
                     self.skip(len);
                 } else {
-                    let msg: &String = self.eval()._as();
+                    let msg: &String = self.eval()?._as();
                     panic!("{}", msg);
                 }
                 RD::Unit()
@@ -293,16 +291,16 @@ impl Evaluator {
 
             OP::CALL(p) => {
                 let p = EvalParser::from(self, p);
-                let C(input, p) = p.eval();
-                let f = p.take_fun1();
+                let C(input, p) = p.eval()?;
+                let f = p.take_fun1()?;
 
                 self.vars[f.0 as usize] = input;
-                self.fetch(&f.1)
+                self.fetch(&f.1)?
             },
 
             OP::FETCH() => {
                 let off = self.buf.take_u16() as usize;
-                self.fetch(&self.start[off..])
+                self.fetch(&self.start[off..])?
             },
 
             _ => {
@@ -320,10 +318,10 @@ impl Evaluator {
             self.profile.1 = sol_remaining_compute_units();
         }
 
-        r
+        Ok(r)
     }
 
-    fn fetch(&mut self, buf: &'static [u8]) -> RD {
+    fn fetch(&mut self, buf: &'static [u8]) -> EvalResult<RD> {
         let prev = *self.buf;
         *self.buf = buf;
         let out = self.eval();
@@ -331,7 +329,7 @@ impl Evaluator {
         out
     }
 
-    fn fn_map(&mut self, p: impl HasParser<R=tlist!(RR<()>, RR<EncodedFunction>)>) -> Vec<RD> {
+    fn fn_map(&mut self, p: impl HasParser<R=tlist!(RR<()>, RR<EncodedFunction>)>) -> EvalResult<Vec<RD>> {
         fn_map!(|self, p, f, val| {
             match val {
                 RD::List(vec) => vec.iter().map(f).collect(),
@@ -385,34 +383,34 @@ macro_rules! parser_taker {
     (<$($param:ident$(: $tr0:ident)?),*> ($($matcher:ty),*), $name:ident, $(@<$($f:ident: $t:ident)*>)?$ret:ty, |$self:ident| $expr:expr) => {
         #[allow(unused)]
         impl<'a, B, T: TList$(, $param$(: $tr0)?)*> EvalParser<'a, wrap_tcons!($($matcher,)* TCons<B, T>)> {
-            pub fn $name$(<$($f: $t)*>)?($self) -> C<'a, $ret, TCons<B, T>> {
-                C($expr, EvalParser($self.0, PhantomData::default()))
+            pub fn $name$(<$($f: $t)*>)?($self) -> EvalResult<C<'a, $ret, TCons<B, T>>> {
+                Ok(C($expr, EvalParser($self.0, PhantomData::default())))
             }
         }
         #[allow(unused)]
         impl<'a, E, B, T: TList$(, $param$(: $tr0)?)*> C<'a, E, wrap_tcons!($($matcher,)* TCons<B, T>)> {
-            pub fn $name$(<$($f: $t)*>)?($self) -> C<'a, (E, $ret), TCons<B, T>> {
-                let C(r, p) = $self.1.$name();
-                C(($self.0, r), p)
+            pub fn $name$(<$($f: $t)*>)?($self) -> EvalResult<C<'a, (E, $ret), TCons<B, T>>> {
+                let C(r, p) = $self.1.$name()?;
+                Ok(C(($self.0, r), p))
             }
         }
         #[allow(unused)]
         impl<'a $(, $param$(: $tr0)?)*> EvalParser<'a, wrap_tcons!($($matcher,)* ())> {
-            pub fn $name$(<$($f: $t)*>)?($self) -> $ret { $expr }
+            pub fn $name$(<$($f: $t)*>)?($self) -> EvalResult<$ret> { Ok($expr) }
         }
         #[allow(unused)]
         impl<'a, E $(, $param$(: $tr0)?)*> C<'a, E, wrap_tcons!($($matcher,)* ())> {
-            pub fn $name$(<$($f: $t)*>)?($self) -> (E, $ret) {
-                ($self.0, $self.1.$name())
+            pub fn $name$(<$($f: $t)*>)?($self) -> EvalResult<(E, $ret)> {
+                Ok(($self.0, $self.1.$name()?))
             }
         }
     };
 }
 parser_taker!(<> (RR<()>), eval_as, @<O: FromRD> O, |self| {
-    self.0.eval()._as()
+    self.0.eval()?._as()
 });
 parser_taker!(<> (RR<()>), eval, RD, |self| {
-    self.0.eval()
+    self.0.eval()?
 });
 parser_taker!(<S: Decode> (S), take, S, |self| {
     self.0.buf.decode()
@@ -423,8 +421,8 @@ parser_taker!(<N> (Skippable, N), skip, (), |self| {
 });
 parser_taker!(<> (Skippable, RR<()>), eval, RD, |self| {
     self.0.buf.skip_bytes(2);
-    self.0.eval()
+    self.0.eval()?
 });
 parser_taker!(<> (RR<EncodedFunction>), take_fun1, &'static EncodedFunction, |self| {
-    self.0.eval()._as()
+    self.0.eval()?._as()
 });

@@ -32,24 +32,24 @@ pub mod tag {
         };
     }
 
-    define_tags!(
-         0 UNIT,
-         1 U8,
-         2 U16,
-         3 U32,
-         4 U64,
-         5 U128,
-         6 BOOL,
-         7 STRING,
-         8 BUFFER,
-         9 BUF32,
-        10 OPTION  [Schema],
-        11 LIST    [Schema],
-        12 TUPLE   [Vec<Schema>],
-        14 RSTRUCT [u16, Vec<Schema>],
-        15 NATIVE,
-        16 REF,
-        17 FUNCTION
+    define_tags!(                     
+         0 UNIT,                      
+         2 U8,                        
+         4 U16,                       
+         6 U32,                       
+         8 U64,                       
+        10 U128,                      
+        12 BOOL,                      
+        14 STRING,                    
+        16 BUFFER,                    
+        18 BUF32,                     
+        20 OPTION  [Schema],          
+        22 LIST    [Schema],          
+        24 TUPLE   [Vec<Schema>],     
+        28 RSTRUCT [u16, Vec<Schema>],
+        30 NATIVE,                    
+        32 REF,                       
+        34 FUNCTION                   
     );
 
 }

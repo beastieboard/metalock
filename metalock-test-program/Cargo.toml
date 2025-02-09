@@ -1,0 +1,14 @@
+[package]
+name = "metalock-test-program"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "metalock_test_program"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-program = "1.17.3"
+metalock-core = { path = "../metalock-core" }
+metalock = { path = "../metalock-lang" }
+

@@ -168,6 +168,9 @@ impl<A: SchemaType> ToRR<A> for RR<A> { fn rr(&self) -> RR<A> { self.clone() } }
 impl<A: SchemaType> ToRR<A> for &RR<A> { fn rr(&self) -> RR<A> { (*self).clone() } }
 impl<A: SchemaType + Into<RD>> ToRR<A> for A { fn rr(&self) -> RR<A> { RR::val(self.clone()) } }
 impl<A: SchemaType + Into<RD>> ToRR<A> for &A { fn rr(&self) -> RR<A> { RR::val((*self).clone()) } }
+pub fn rr<R: SchemaType, O: Op<R> + 'static>(op: O) -> RR<R> {
+    RR::new(op)
+}
 
 #[derive(Default, Debug)]
 pub struct EncodeContext {
@@ -245,19 +248,21 @@ macro_rules! opcode {
     };
     // note $dol (https://stackoverflow.com/a/53971532) (forced to call another matcher)
     (|$self:ident,$ctx:ident| $($op:ident, )? ($($f0:tt [$($mod:tt)*] ),*) $D:tt) => {
-        { let mut opcode: Option<u8> = None;
-                $(opcode = Some(OP::$op(Default::default()).into());)?
-                let mut trees = Vec::<OpTree>::new();
-                macro_rules! mm {
-                    ($i:tt, ((PhantomData<$D($t:tt)*))) => { };
-                    ($i:tt, ($fi:tt $D($mia:tt),*)) => {
-                        let t = $self.$i.op_encode($ctx);
-                        $D(let t = <$mia>::op_encode(t, $ctx);)*
-                        trees.push(t);
-                    };
-                }
-                each_field!(|mm| $(($f0 $($mod),*)),*);
-                OpTree::Op(opcode, trees) }
+        {
+            let mut opcode: Option<u8> = None;
+            $(opcode = Some(OP::$op(Default::default()).into());)?
+            let mut trees = Vec::<OpTree>::new();
+            macro_rules! mm {
+                ($i:tt, ((PhantomData<$D($t:tt)*))) => { };
+                ($i:tt, ($fi:tt $D($mia:tt),*)) => {
+                    let t = $self.$i.op_encode($ctx);
+                    $D(let t = <$mia>::op_encode(t, $ctx);)*
+                    trees.push(t);
+                };
+            }
+            each_field!(|mm| $(($f0 $($mod),*)),*);
+            OpTree::Op(opcode, trees)
+        }
     };
 }
 
@@ -313,7 +318,7 @@ opcode!(#IF, O, If<O: Clone>((RR<bool>), (RR<O>) [Skippable], (RR<O>) [Skippable
 
 opcode!(#PANIC, A, Panic<A>(String, (PhantomData<A>)));
 opcode!(#ASSERT, (), Assert<>((RR<bool>), (RR<String>) [Skippable]));
-opcode!(#INDEX, O, Index<O>((RR<Vec<O> >), (RR<u16>)));
+opcode!(#INDEX, Option<O>, Index<O>((RR<Vec<O> >), (RR<u16>)));
 opcode!(#SLICE, Vec<O>, Slice<O>((RR<Vec<O> >), (RR<u16>)));
 
 
@@ -367,5 +372,4 @@ impl Skippable {
         OpTree::LengthPrefix(op.into())
     }
 }
-
 

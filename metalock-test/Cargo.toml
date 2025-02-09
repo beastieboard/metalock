@@ -1,0 +1,21 @@
+[package]
+name = "metalock-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+metalock-core = { path = "../metalock-core" }
+metalock = { path = "../metalock-lang" }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
+solana-client = "1.17.3"
+#solana-program = "1.17.3"
+solana-sdk = "1.17.3"
+#solana-logger = "1.17.3"
+#solana-program-test = "1.17.3"
+#log = "0.4.25"
+

@@ -213,7 +213,7 @@ impl<'a, S: HasMetalock> Metalock<'a, S> {
             } else {
                 let mut eval = Evaluator::new(&mut hook.code.as_ref(), context.clone());
                 let r = eval.run(input.clone().into());
-                results.push(Ok(r));
+                results.push(r);
             }
         }
 

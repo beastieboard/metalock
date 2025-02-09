@@ -34,7 +34,7 @@ impl<Input: SchemaType + Into<RD>, Output: SchemaType> Program<Input, Output> {
         self.expr.op_encode(&mut ctx)
     }
 
-    pub fn run(&self, input: Input, context: EvaluatorContext) -> RD {
+    pub fn run(&self, input: Input, context: EvaluatorContext) -> EvalResult<RD> {
         let mut other = self.clone();
         let code = other.op_tree().join_threshold(usize::MAX);
         let mut eval = Evaluator::new(&mut code.as_ref(), context);
@@ -77,7 +77,7 @@ mod tests {
             n.add(10)
         }
 
-        let r: u8 = prog.to_program().run(1, Default::default())._as();
+        let r: u8 = prog.to_program().run(1, Default::default()).unwrap()._as();
         assert_eq!(r, 11);
     }
 }

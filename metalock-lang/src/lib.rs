@@ -4,5 +4,5 @@ pub mod api;
 pub mod profile;
 pub mod program;
 pub mod frontend;
-mod compile;
+pub mod compile;
 mod native;

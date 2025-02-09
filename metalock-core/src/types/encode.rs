@@ -1,6 +1,7 @@
 
 use super::core::*;
 use super::data::*;
+use super::schema::SchemaType;
 
 
 pub trait Encode: Sized {
@@ -11,6 +12,8 @@ impl<A: Encode> Encode for &A {
         (*self).rd_encode()
     }
 }
+//pub fn rd_encode_with_schema<A: Encode + SchemaType>(a: A) -> Vec<u8> {
+//}
 
 macro_rules! impl_serialize_any {
     ([$($params:ident),*], $type:ty, |$self:ident| $body:expr) => {
